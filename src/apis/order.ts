@@ -7,6 +7,7 @@ import type {
   GenerateOrderResult,
   OrderParam,
   OmsOrderDetail,
+  OmsOrderReturnApply,
   OmsOrderReturnApplyParam,
 } from '@/types/order'
 import type { CommonPage, PageParam } from '@/types/common'
@@ -171,5 +172,13 @@ export const createReturnApplyAPI = (data: OmsOrderReturnApplyParam) => {
     method: 'POST',
     url: '/returnApply/create',
     data,
+  })
+}
+
+/** 获取当前会员的售后申请列表 */
+export const getReturnApplyListAPI = () => {
+  return http<OmsOrderReturnApply[]>({
+    method: 'GET',
+    url: '/returnApply/list',
   })
 }

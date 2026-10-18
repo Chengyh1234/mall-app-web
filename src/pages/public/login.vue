@@ -327,18 +327,22 @@ page {
 .password-row {
   display: flex;
   align-items: center;
-  flex: 1;
+  width: 100%;
 
   input {
     flex: 1;
   }
 }
 
+/* 眼睛图标：与输入框右侧保持合适的间距，垂直居中，触控区域足够大 */
 .eye-icon {
+  position: relative;
   flex-shrink: 0;
-  width: 36rpx;
-  height: 36rpx;
-  margin-left: 16rpx;
+  width: 15rpx;
+  height: 15rpx;
+  margin-left: 12rpx;
+  padding: 16rpx;
+  box-sizing: content-box;
   background-repeat: no-repeat;
   background-size: 100% 100%;
   background-position: center;
@@ -346,12 +350,12 @@ page {
 
 /* 睁眼（明文可见，点击可隐藏） */
 .eye-open {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
 }
 
 /* 闭眼（明文隐藏，点击可显示） */
 .eye-close {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cline x1='1' y1='1' x2='23' y2='23'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cline x1='1' y1='1' x2='23' y2='23'/%3E%3C/svg%3E");
 }
 
 .input-content {

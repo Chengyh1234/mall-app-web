@@ -113,9 +113,9 @@
         <button class="action-btn">查看物流</button>
         <button class="action-btn recom" @click="handleReceiveOrder(order.id)">确认收货</button>
       </view>
-      <view class="action-box b-t" v-if="order.status === 3 && !order.commentTime">
-        <button class="action-btn">申请售后</button>
-        <button class="action-btn recom" @click="navToEvaluate">评价商品</button>
+      <view class="action-box b-t" v-if="order.status === 3">
+        <button v-if="!hasReturnApply()" class="action-btn" @click="navToReturnApply">申请售后</button>
+        <button v-if="!order.commentTime" class="action-btn recom" @click="navToEvaluate">评价商品</button>
       </view>
       <view class="price-content" v-if="order.status === 0">
         <text>应付金额</text>
@@ -128,10 +128,15 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { formatDate } from '@/utils/date'
-import { getOrderDetailAPI, cancelUserOrderAPI, confirmReceiveOrderAPI } from '@/apis/order'
-import type { OmsOrderDetail } from '@/types/order'
+import {
+  getOrderDetailAPI,
+  cancelUserOrderAPI,
+  confirmReceiveOrderAPI,
+  getReturnApplyListAPI,
+} from '@/apis/order'
+import type { OmsOrderDetail, OmsOrderReturnApply } from '@/types/order'
 
 // ===== 页面数据 =====
 // 订单ID
@@ -140,6 +145,13 @@ const orderId = ref<number>(0)
 const order = ref<OmsOrderDetail>({} as OmsOrderDetail)
 // 订单状态信息
 const orderStatus = ref<{ text: string; image: string }>({ text: '', image: '' })
+// 当前会员售后申请列表（用于"退款处理中"标记与申请入口控制）
+const afterSaleList = ref<OmsOrderReturnApply[]>([])
+
+// 当前订单是否已申请售后
+const hasReturnApply = (): boolean => {
+  return afterSaleList.value.some((r) => r.orderId === order.value.id)
+}
 
 // ===== loadData =====
 // 加载订单详情
@@ -151,7 +163,26 @@ const loadData = async () => {
   } catch (e) {
     console.error('加载订单详情失败', e)
   }
+  // 加载售后记录用于"退款处理中"标记（接口失败不影响订单详情展示）
+  try {
+    const applyRes = await getReturnApplyListAPI()
+    afterSaleList.value = applyRes.data || []
+    setOrderStatus(order.value.status)
+  } catch (e) {
+    console.error('加载售后记录失败', e)
+  }
 }
+
+// ===== onShow =====
+// 首次进入由 onLoad 加载；后续（如申请售后返回）重新加载以同步"退款处理中"标记
+let isFirstShow = true
+onShow(() => {
+  if (isFirstShow) {
+    isFirstShow = false
+    return
+  }
+  loadData()
+})
 
 // ===== onLoad =====
 // 页面加载
@@ -213,6 +244,13 @@ const handleReceiveOrder = (id: number) => {
   })
 }
 
+// 跳转售后申请页
+const navToReturnApply = () => {
+  uni.navigateTo({
+    url: `/pages/order/returnApply?orderId=${order.value.id}`,
+  })
+}
+
 // 跳转评价页（取订单第一个商品）
 const navToEvaluate = () => {
   const orderItem = order.value.orderItemList && order.value.orderItemList[0]
@@ -238,6 +276,15 @@ const setOrderStatus = (status: number) => {
     4: { text: '交易关闭', image: '/static/icon_close.png' },
   }
   orderStatus.value = statusMap[status] || { text: '', image: '' }
+  // 已完成订单联动售后状态：无售后->交易完成；退款处理中；已退款；售后被拒->仍为交易完成
+  if (status === 3) {
+    const apply = afterSaleList.value.find((r) => r.orderId === order.value.id)
+    if (apply && apply.status === 2) {
+      orderStatus.value.text = '已退款'
+    } else if (apply && apply.status !== 3) {
+      orderStatus.value.text = '退款处理中'
+    }
+  }
 }
 
 // 格式化商品属性

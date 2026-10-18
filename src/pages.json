@@ -207,6 +207,18 @@
       }
     },
     {
+      "path": "pages/order/returnApply",
+      "style": {
+        "navigationBarTitleText": "申请售后"
+      }
+    },
+    {
+      "path": "pages/order/returnApplyList",
+      "style": {
+        "navigationBarTitleText": "退款/售后"
+      }
+    },
+    {
       "path": "pages/money/pay",
       "style": {
         "navigationBarTitleText": "支付订单"

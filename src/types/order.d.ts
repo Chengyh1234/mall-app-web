@@ -303,6 +303,8 @@ export type OmsOrderDetail = {
   billReceiverEmail: string
   /** 订单商品列表 */
   orderItemList: OmsOrderItem[]
+  /** 售后申请状态：null->无售后；0->待处理；1->退货中；2->已退款；3->已拒绝 */
+  returnApplyStatus?: number
 }
 
 /** 退货申请请求参数 */
@@ -339,4 +341,62 @@ export type OmsOrderReturnApplyParam = {
   returnName: string
   /** 退货人电话 */
   returnPhone: string
+}
+
+/** 售后申请记录（对应后端 OmsOrderReturnApply） */
+export type OmsOrderReturnApply = {
+  /** ID */
+  id: number
+  /** 订单ID */
+  orderId: number
+  /** 收货地址表ID */
+  companyAddressId: number
+  /** 退货商品ID */
+  productId: number
+  /** 订单编号 */
+  orderSn: string
+  /** 申请时间 */
+  createTime: string
+  /** 会员用户名 */
+  memberUsername: string
+  /** 退款金额 */
+  returnAmount: number
+  /** 退货人姓名 */
+  returnName: string
+  /** 退货人电话 */
+  returnPhone: string
+  /** 申请状态：0->待处理；1->退货中；2->已完成；3->已拒绝 */
+  status: number
+  /** 处理时间 */
+  handleTime: string
+  /** 商品图片 */
+  productPic: string
+  /** 商品名称 */
+  productName: string
+  /** 商品品牌 */
+  productBrand: string
+  /** 商品销售属性 */
+  productAttr: string
+  /** 退货数量 */
+  productCount: number
+  /** 商品单价 */
+  productPrice: number
+  /** 商品实际支付单价 */
+  productRealPrice: number
+  /** 原因 */
+  reason: string
+  /** 描述 */
+  description: string
+  /** 凭证图片，以逗号隔开 */
+  proofPics: string
+  /** 处理备注 */
+  handleNote: string
+  /** 处理人员 */
+  handleMan: string
+  /** 收货人 */
+  receiveMan: string
+  /** 收货时间 */
+  receiveTime: string
+  /** 收货备注 */
+  receiveNote: string
 }

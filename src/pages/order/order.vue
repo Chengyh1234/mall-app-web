@@ -27,8 +27,8 @@
           <view v-for="(item, index) in orderList" :key="index" class="order-item">
             <view class="i-top b-b">
               <text class="time">{{ formatDateTime(item.createTime) }}</text>
-              <text class="state" :style="{ color: '#fa436a' }">{{
-                formatStatus(item.status)
+              <text class="state" :style="{ color: getStatusColor(item) }">{{
+                getStatusText(item)
               }}</text>
               <text
                 v-if="item.status === 3 || item.status === 4"
@@ -69,8 +69,17 @@
                 确认收货
               </button>
             </view>
-            <view v-if="item.status === 3 && !item.commentTime" class="action-box b-t">
-              <button class="action-btn recom" @click="navToEvaluate(item)">评价商品</button>
+            <view v-if="item.status === 3" class="action-box b-t">
+              <button
+                v-if="!hasReturnApply(item)"
+                class="action-btn"
+                @click="navToReturnApply(item)"
+              >
+                申请售后
+              </button>
+              <button v-if="!item.commentTime" class="action-btn recom" @click="navToEvaluate(item)">
+                评价商品
+              </button>
             </view>
           </view>
 
@@ -83,7 +92,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { formatDate } from '@/utils/date'
 import {
   getOrderListAPI,
@@ -117,6 +126,11 @@ const searchParam = ref<PageParam & { status: number }>({
   pageNum: 1,
   pageSize: 5,
 })
+
+// 判断订单是否已申请售后（后端 /order/list 已带 returnApplyStatus 字段）
+const hasReturnApply = (order: OmsOrderDetail): boolean => {
+  return order.returnApplyStatus != null
+}
 
 // ===== loadData =====
 // 加载订单列表数据
@@ -171,6 +185,17 @@ onLoad((options) => {
     tabCurrentIndex.value = +options.state
   }
   loadData()
+})
+
+// ===== onShow =====
+// 首次进入由 onLoad 加载；后续（如申请售后返回）刷新列表以同步"退款处理中"标记
+let isFirstShow = true
+onShow(() => {
+  if (isFirstShow) {
+    isFirstShow = false
+    return
+  }
+  loadData('refresh')
 })
 
 // ===== onPullDownRefresh =====
@@ -269,6 +294,13 @@ const handleShowOrderDetail = (orderId: number) => {
   })
 }
 
+// 跳转售后申请页
+const navToReturnApply = (order: OmsOrderDetail) => {
+  uni.navigateTo({
+    url: `/pages/order/returnApply?orderId=${order.id}`,
+  })
+}
+
 // 跳转评价页（取订单第一个商品）
 const navToEvaluate = (order: OmsOrderDetail) => {
   const orderItem = order.orderItemList && order.orderItemList[0]
@@ -294,6 +326,32 @@ const formatStatus = (status: number): string => {
     4: '交易关闭',
   }
   return statusMap[status] || ''
+}
+
+// 订单状态文字：已完成订单联动售后状态
+// 无售后->交易完成；退款处理中；已退款；售后被拒->仍为交易完成
+const getStatusText = (order: OmsOrderDetail): string => {
+  if (order.status === 3 && order.returnApplyStatus != null) {
+    if (order.returnApplyStatus === 2) {
+      return '已退款'
+    }
+    if (order.returnApplyStatus === 3) {
+      return '交易完成'
+    }
+    return '退款处理中'
+  }
+  return formatStatus(order.status)
+}
+
+// 订单状态颜色：已退款绿色，退款处理中橙色，其余默认粉色
+const getStatusColor = (order: OmsOrderDetail): string => {
+  if (order.status === 3 && order.returnApplyStatus != null) {
+    if (order.returnApplyStatus === 2) {
+      return '#07c160'
+    }
+    return '#ff9a2e'
+  }
+  return '#fa436a'
 }
 
 // 格式化商品属性
