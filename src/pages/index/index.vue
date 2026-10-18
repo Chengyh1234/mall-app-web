@@ -5,7 +5,13 @@
     <view class="mp-search-box">
       <text class="yticon icon-saomiao nav-icon" @click="handleScan"></text>
       <input class="ser-input" type="text" value="输入关键字搜索" disabled @click="handleSearch" />
-      <text class="yticon icon-icon-- nav-icon" @click="handleNavToNotice"></text>
+      <view class="nav-icon-box">
+        <text class="yticon icon-icon-- nav-icon" @click="handleNavToNotice"></text>
+        <!-- 未读消息数字徽标（为 0 时不显示） -->
+        <text v-if="messageStore.unreadCount > 0" class="nav-badge">
+          {{ messageStore.unreadCount > 99 ? '99+' : messageStore.unreadCount }}
+        </text>
+      </view>
     </view>
     <!-- #endif -->
 
@@ -15,7 +21,7 @@
       <view class="titleNview-placing"></view>
       <!-- 背景色区域 -->
       <view class="titleNview-background" :style="{ backgroundColor: titleNViewBackground }"></view>
-      <swiper class="carousel" circular @change="handleSwiperChange">
+      <swiper class="carousel" circular autoplay :interval="5000" :duration="500" @change="handleSwiperChange">
         <swiper-item
           v-for="(item, index) in advertiseList"
           :key="index"
@@ -78,37 +84,46 @@
     </view>
 
     <!-- 秒杀专区 -->
-    <view class="f-header m-t" v-if="homeFlashPromotion">
-      <image src="/static/icon_flash_promotion.png"></image>
-      <view class="tit-box">
-        <text class="tit">秒杀专区</text>
-        <text class="tit2">下一场 {{ formatTime(homeFlashPromotion?.nextStartTime) }} 开始</text>
-      </view>
-      <view class="tit-box">
-        <text class="tit2" style="text-align: right">本场结束剩余：</text>
-        <view style="text-align: right">
-          <text class="hour timer">{{ cutDownTime.endHour }}</text>
-          <text>:</text>
-          <text class="minute timer">{{ cutDownTime.endMinute }}</text>
-          <text>:</text>
-          <text class="second timer">{{ cutDownTime.endSecond }}</text>
+    <view class="flash-section m-t" v-if="homeFlashPromotion">
+      <!-- 头部：标题 + 倒计时 + 下场时间 -->
+      <view class="flash-header">
+        <image class="flash-logo" src="/static/icon_flash_promotion.png"></image>
+        <view class="flash-title-box">
+          <text class="flash-title">秒杀专区</text>
+        </view>
+        <view class="flash-more" @click="handleNavToFlashPage">
+          <text class="flash-more-text">查看全部</text>
+          <text class="yticon icon-you"></text>
+        </view>
+        <view class="flash-countdown">
+          <text class="flash-countdown-label">距本场结束</text>
+          <view class="flash-countdown-timer">
+            <text class="timer">{{ cutDownTime.endHour }}</text>
+            <text class="colon">:</text>
+            <text class="timer">{{ cutDownTime.endMinute }}</text>
+            <text class="colon">:</text>
+            <text class="timer">{{ cutDownTime.endSecond }}</text>
+          </view>
         </view>
       </view>
-    </view>
-    <view class="guess-section" v-if="homeFlashPromotion">
-      <view
-        v-for="(item, index) in homeFlashPromotion.productList"
-        :key="index"
-        class="guess-item"
-        @click="handleNavToDetailPage(item)"
-      >
-        <view class="image-wrapper">
-          <image :src="item.pic" mode="aspectFill"></image>
+      <!-- 秒杀商品：横向滑动卡片 -->
+      <scroll-view class="flash-list" scroll-x>
+        <view class="flash-scroll-wrapper">
+          <view
+            v-for="(item, index) in homeFlashPromotion.productList"
+            :key="index"
+            class="flash-item"
+            @click="handleNavToDetailPage(item)"
+          >
+            <image class="flash-item-img" :src="item.pic" mode="aspectFill"></image>
+            <text class="flash-item-name clamp">{{ item.name }}</text>
+            <view class="flash-item-price">
+              <text class="flash-price">￥{{ flashPrice(item) }}</text>
+              <text class="flash-original-price" v-if="flashPrice(item) !== item.price">￥{{ item.price }}</text>
+            </view>
+          </view>
         </view>
-        <text class="title clamp">{{ item.name }}</text>
-        <text class="title2 clamp">{{ item.subTitle }}</text>
-        <text class="price">￥{{ item.flashPromotionPrice || item.price }}</text>
-      </view>
+      </scroll-view>
     </view>
 
     <!-- 新鲜好物 -->
@@ -196,9 +211,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import {
   onLoad,
+  onShow,
+  onHide,
+  onUnload,
   onPullDownRefresh,
   onReachBottom,
   onPageScroll,
@@ -206,12 +224,15 @@ import {
   onNavigationBarSearchInputClicked,
 } from '@dcloudio/uni-app'
 import { getHomeContentAPI, getRecommendProductListAPI } from '@/apis/home'
+import { useMessageStore } from '@/stores/message'
 import type { SmsHomeAdvertise, HomeFlashPromotion } from '@/types/home'
 import type { PmsProduct } from '@/types/product'
 import type { PmsBrand } from '@/types/brand'
 import type { PageParam } from '@/types/common'
 
 // ===== 页面数据 =====
+// 消息store（导航栏消息图标未读徽标）
+const messageStore = useMessageStore()
 // 标题栏背景色
 const titleNViewBackground = ref('')
 // 标题栏背景色列表
@@ -243,26 +264,59 @@ const recommendPageParam = ref<PageParam>({
   pageSize: 4,
 })
 
-// ===== 计算属性 =====
-// 秒杀倒计时计算
-const cutDownTime = computed(() => {
-  if (!homeFlashPromotion.value?.endTime) {
-    return { endHour: '00', endMinute: '00', endSecond: '00' }
+// ===== 秒杀倒计时 =====
+// 秒杀倒计时（每秒更新）
+const cutDownTime = ref({ endHour: '00', endMinute: '00', endSecond: '00' })
+// 倒计时定时器句柄
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+// 更新秒杀倒计时
+const updateCutDownTime = () => {
+  const endTime = homeFlashPromotion.value?.endTime
+  if (!endTime) {
+    cutDownTime.value = { endHour: '00', endMinute: '00', endSecond: '00' }
+    return
   }
-  const endTime = new Date(homeFlashPromotion.value.endTime)
-  const now = new Date()
-  const endDateTime = new Date()
-  endDateTime.setHours(endTime.getHours())
-  endDateTime.setMinutes(endTime.getMinutes())
-  endDateTime.setSeconds(endTime.getSeconds())
-  const offsetTime = endDateTime.getTime() - now.getTime()
+  // 兼容两种格式：
+  //  1) 完整日期时间（ISO，如 "2026-10-15T22:00:00"）→ new Date 可直接解析
+  //  2) 当天时刻（后端 LocalTime，如 "22:00:00"，不带日期）→ 需拼上"今天"日期，
+  //     否则 new Date("22:00:00") 为 Invalid Date → getTime()=NaN → 倒计时显示 Na:Na:Na
+  let endTs = new Date(endTime).getTime()
+  if (Number.isNaN(endTs)) {
+    const [h, m, s] = endTime.split(':').map(Number)
+    const now = new Date()
+    endTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, s).getTime()
+  }
+  // 直接用时间戳差值计算，避免"当天"假设导致的跨天错误
+  const offsetTime = endTs - Date.now()
+  if (offsetTime <= 0) {
+    // 本场已结束，归零
+    cutDownTime.value = { endHour: '00', endMinute: '00', endSecond: '00' }
+    return
+  }
   const endHour = String(Math.floor(offsetTime / (60 * 60 * 1000))).padStart(2, '0')
-  const offsetMinute = offsetTime % (60 * 60 * 1000)
-  const endMinute = String(Math.floor(offsetMinute / (60 * 1000))).padStart(2, '0')
-  const offsetSecond = offsetTime % (60 * 1000)
-  const endSecond = String(Math.floor(offsetSecond / 1000)).padStart(2, '0')
-  return { endHour, endMinute, endSecond }
-})
+  const endMinute = String(Math.floor((offsetTime % (60 * 60 * 1000)) / (60 * 1000))).padStart(2, '0')
+  const endSecond = String(Math.floor((offsetTime % (60 * 1000)) / 1000)).padStart(2, '0')
+  cutDownTime.value = { endHour, endMinute, endSecond }
+}
+
+// 启动秒杀倒计时（先立即更新一次，再每秒刷新）
+const startCountdown = () => {
+  updateCutDownTime()
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = setInterval(updateCutDownTime, 1000)
+}
+
+// 停止秒杀倒计时
+const stopCountdown = () => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
+
+// 秒杀价（有秒杀价用秒杀价，否则回退商品原价）
+const flashPrice = (item: PmsProduct) => item.flashPromotionPrice || item.price
 
 // ===== 数据加载 =====
 // 加载首页数据
@@ -277,9 +331,13 @@ const loadData = async () => {
     hotProductList.value = data?.hotProductList || []
     swiperLength.value = advertiseList.value.length
     titleNViewBackground.value = titleNViewBackgroundList[0]
-    // 加载推荐商品
+    // 有秒杀场次则启动倒计时
+    if (homeFlashPromotion.value) {
+      startCountdown()
+    }
+    // 加载推荐商品（后端返回分页对象，取 records）
     const recommendRes = await getRecommendProductListAPI(recommendPageParam.value)
-    recommendProductList.value = recommendRes.data || []
+    recommendProductList.value = recommendRes.data?.records || []
     uni.stopPullDownRefresh()
   } catch (err) {
     console.error('加载首页数据失败', err)
@@ -291,6 +349,60 @@ const loadData = async () => {
 // 页面加载时执行
 onLoad(() => {
   loadData()
+})
+
+// 页面显示时刷新未读消息数并开启轮询，同步导航栏消息按钮红点
+onShow(async () => {
+  await messageStore.startPolling()
+  // #ifdef APP-PLUS
+  const pages = getCurrentPages()
+  const page = pages[pages.length - 1]
+  // @ts-ignore
+  const currentWebview = page.$getAppWebview()
+  // 延迟到导航栏渲染完成后设置红点，避免首次进入页面时调用无效
+  setTimeout(() => {
+    if (messageStore.unreadCount > 0) {
+      currentWebview.showTitleNViewButtonRedDot({
+        index: 1,
+        count: messageStore.unreadCount,
+      })
+    } else {
+      currentWebview.hideTitleNViewButtonRedDot({ index: 1 })
+    }
+  }, 100)
+  // #endif
+  // #ifdef H5
+  syncUnreadBadge()
+  // #endif
+})
+
+// H5 端同步导航栏消息按钮未读徽标（无原生红点 API，操作 DOM：uni-h5 内置 .uni-page-head-btn-red-dot 类 + badge-text 属性渲染数字）
+// #ifdef H5
+const syncUnreadBadge = () => {
+  setTimeout(() => {
+    // 按钮渲染顺序与 pages.json buttons 配置一致：index 1 为消息按钮
+    const msgBtn = document.querySelectorAll('.uni-page-head-btn')[1]
+    if (!msgBtn) return
+    if (messageStore.unreadCount > 0) {
+      msgBtn.classList.add('uni-page-head-btn-red-dot')
+      msgBtn.setAttribute('badge-text', messageStore.unreadCount > 99 ? '99+' : String(messageStore.unreadCount))
+    } else {
+      msgBtn.classList.remove('uni-page-head-btn-red-dot')
+      msgBtn.removeAttribute('badge-text')
+    }
+  }, 100)
+}
+// #endif
+
+// 离开首页时停止未读消息轮询，避免在其他页面继续发请求
+onHide(() => {
+  messageStore.stopPolling()
+})
+
+// 页面卸载时清理定时器（秒杀倒计时 + 消息轮询）
+onUnload(() => {
+  stopCountdown()
+  messageStore.stopPolling()
 })
 
 // 下拉刷新时执行
@@ -305,8 +417,9 @@ onReachBottom(async () => {
   loadingType.value = 'loading'
   try {
     const res = await getRecommendProductListAPI(recommendPageParam.value)
-    const list = res.data as PmsProduct[]
-    if (!list || list.length === 0) {
+    // 后端返回分页对象，取 records
+    const list = res.data?.records || []
+    if (list.length === 0) {
       recommendPageParam.value.pageNum--
       loadingType.value = 'noMore'
     } else {
@@ -372,7 +485,39 @@ const handleNavToDetailPage = (item: PmsProduct) => {
 
 // 跳转到广告详情页
 const handleNavToAdvertisePage = (item: SmsHomeAdvertise) => {
-  // TODO: 实现广告详情页跳转逻辑
+  const target = item.url?.trim()
+  if (!target) {
+    uni.showToast({ icon: 'none', title: '暂无跳转链接' })
+    return
+  }
+  // 站内页面路径（如 /pages/brand/brandDetail?id=6）
+  if (target.startsWith('/pages/')) {
+    uni.navigateTo({ url: target })
+    return
+  }
+  // 外部链接（如 www.xxx.com 或 http/https 开头的网页）
+  let url = target
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'http://' + url
+  }
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifdef APP-PLUS
+  // @ts-ignore app-plus 专用
+  plus.runtime.openURL(url)
+  // #endif
+  // #ifdef MP
+  uni.setClipboardData({
+    data: url,
+    success: () => {
+      uni.showToast({
+        icon: 'none',
+        title: '链接已复制到剪贴板',
+      })
+    },
+  })
+  // #endif
 }
 
 // 跳转到品牌制造商直供页
@@ -403,6 +548,13 @@ const handleNavToHotProductListPage = () => {
   })
 }
 
+// 跳转到秒杀专区页
+const handleNavToFlashPage = () => {
+  uni.navigateTo({
+    url: '/pages/flash/list',
+  })
+}
+
 // 跳转到专题页
 const handleNavToTopicPage = () => {
   uni.showToast({
@@ -429,7 +581,7 @@ const handleScan = () => {
 // 跳转到通知页（小程序端导航栏右侧按钮）
 const handleNavToNotice = () => {
   uni.navigateTo({
-    url: '/pages/notice/notice',
+    url: '/pages/message/message',
   })
 }
 
@@ -439,16 +591,6 @@ onNavigationBarSearchInputClicked(() => {
 })
 
 // ===== 其他方法 =====
-// 时间格式化
-const formatTime = (time: string | undefined) => {
-  if (!time) return 'N/A'
-  const date = new Date(time)
-  const h = String(date.getHours()).padStart(2, '0')
-  const m = String(date.getMinutes()).padStart(2, '0')
-  const s = String(date.getSeconds()).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
-
 // 导航栏按钮点击事件
 onNavigationBarButtonTap((e: { index: number }) => {
   const index = e.index
@@ -468,7 +610,7 @@ onNavigationBarButtonTap((e: { index: number }) => {
     })
     // #endif
     uni.navigateTo({
-      url: '/pages/notice/notice',
+      url: '/pages/message/message',
     })
   }
 })
@@ -521,6 +663,29 @@ page {
     font-size: 44rpx;
     color: #fff;
     padding: 0 10rpx;
+  }
+
+  .nav-icon-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    .nav-badge {
+      position: absolute;
+      top: -10rpx;
+      right: -10rpx;
+      min-width: 30rpx;
+      height: 30rpx;
+      padding: 0 8rpx;
+      background: #fa436a;
+      color: #fff;
+      font-size: 20rpx;
+      line-height: 30rpx;
+      text-align: center;
+      border-radius: 15rpx;
+      border: 2rpx solid #fff;
+      box-sizing: border-box;
+    }
   }
 
   .ser-input {
@@ -834,6 +999,142 @@ page {
     color: #fff;
     border-radius: 2px;
     background: rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* 秒杀专区 */
+.flash-section {
+  padding-bottom: 24rpx;
+  background: #fff;
+}
+
+.flash-header {
+  display: flex;
+  align-items: center;
+  height: 140rpx;
+  padding: 6rpx 30rpx 8rpx;
+
+  .flash-logo {
+    flex-shrink: 0;
+    width: 80rpx;
+    height: 80rpx;
+    margin-right: 20rpx;
+  }
+
+  .flash-title-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+
+    .flash-title {
+      font-size: $font-lg + 2rpx;
+      color: $font-color-dark;
+      line-height: 1.3;
+    }
+  }
+
+  .flash-more {
+    display: flex;
+    align-items: center;
+    margin-right: 16rpx;
+    font-size: $font-sm;
+    color: $font-color-light;
+
+    .yticon {
+      font-size: $font-lg;
+    }
+  }
+
+  .flash-countdown {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+
+    .flash-countdown-label {
+      font-size: $font-sm;
+      color: $font-color-light;
+      margin-bottom: 6rpx;
+    }
+
+    .flash-countdown-timer {
+      display: flex;
+      align-items: center;
+    }
+
+    .timer {
+      display: inline-block;
+      width: 40rpx;
+      height: 36rpx;
+      text-align: center;
+      line-height: 36rpx;
+      margin-right: 0;
+      font-size: $font-sm + 2rpx;
+      color: #fff;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    .colon {
+      margin: 0 6rpx;
+      font-size: $font-sm + 2rpx;
+      color: $font-color-dark;
+    }
+  }
+}
+
+/* 秒杀商品横向滑动列表 */
+.flash-list {
+  white-space: nowrap;
+  padding: 0 30rpx;
+  box-sizing: border-box;
+}
+
+.flash-scroll-wrapper {
+  display: flex;
+  align-items: flex-start;
+}
+
+.flash-item {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 240rpx;
+  margin-right: 20rpx;
+  font-size: $font-sm + 2rpx;
+  color: $font-color-dark;
+  line-height: 1.8;
+
+  .flash-item-img {
+    width: 240rpx;
+    height: 240rpx;
+    border-radius: 6rpx;
+  }
+
+  .flash-item-name {
+    font-size: $font-base;
+    color: $font-color-dark;
+    line-height: 60rpx;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .flash-item-price {
+    display: flex;
+    align-items: baseline;
+
+    .flash-price {
+      font-size: $font-lg;
+      font-weight: 600;
+      color: $uni-color-primary;
+    }
+
+    .flash-original-price {
+      margin-left: 10rpx;
+      font-size: $font-sm;
+      color: $font-color-light;
+      text-decoration: line-through;
+    }
   }
 }
 

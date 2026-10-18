@@ -12,21 +12,22 @@ const baseURL = import.meta.env.VITE_API_BASE_URL
 
 const httpInterceptor = {
   invoke(options: UniApp.RequestOptions) {
-    // 1.拼接基础地址
-    if (!options.url.startsWith('http')) {
+    // 1.拼接基础地址（ES 相对路径 /esProduct 走 vite 代理，不拼主 baseURL）
+    if (!options.url.startsWith('http') && !options.url.startsWith('/esProduct')) {
       options.url = baseURL + options.url
     }
-    // 2.设置超时时间
-    options.timeout = 10 * 1000
-    // 3.添加请求头标识
-    options.header = {
-      'source-client': 'miniapp',
-      ...options.header,
-    }
-    // 4.添加 token（从 storage 获取）
-    const token = uni.getStorageSync('token')
-    if (token) {
-      options.header.Authorization = token
+    // 2.设置超时时间（OSS直传等场景可自行传入更长超时）
+    options.timeout = options.timeout || 10 * 1000
+    // 3.添加请求头标识与token（仅对走本服务网关的请求添加，外部直传如OSS不加，避免干扰其鉴权）
+    if (options.url.startsWith(baseURL)) {
+      options.header = {
+        'source-client': 'miniapp',
+        ...options.header,
+      }
+      const token = uni.getStorageSync('token')
+      if (token) {
+        options.header.Authorization = token
+      }
     }
   },
 }
@@ -63,6 +64,8 @@ const buildQueryString = (params: Record<string, any>): string => {
 export interface HttpRequestOptions extends UniApp.RequestOptions {
   /** 查询参数（会自动拼接到 URL 后面） */
   params?: Record<string, any>
+  /** 覆盖默认 baseURL（如 ES 搜索服务独立地址） */
+  baseURL?: string
 }
 
 /**
@@ -79,6 +82,8 @@ export interface HttpRequestOptions extends UniApp.RequestOptions {
  *    3.3 网络错误 -> 提示用户换网络
  */
 export const http = <T>(options: HttpRequestOptions): Promise<CommonResult<T>> => {
+  // 覆盖 baseURL（若指定）用于 ES 独立服务等场景
+  const requestBaseURL = options.baseURL ?? baseURL
   // 处理 params 参数，拼接到 URL?
   if (options.params) {
     const queryString = buildQueryString(options.params)
@@ -92,6 +97,9 @@ export const http = <T>(options: HttpRequestOptions): Promise<CommonResult<T>> =
   return new Promise<CommonResult<T>>((resolve, reject) => {
     uni.request({
       ...options,
+      // 拼接完整地址
+      url: options.url.startsWith('http') ? options.url : requestBaseURL + options.url,
+      baseURL: requestBaseURL,
       // 响应成功
       success(res) {
         // 状态码 2xx，参考 axios 的设计

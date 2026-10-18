@@ -19,50 +19,60 @@
       <view class="welcome">注册账号！</view>
       <view class="input-content">
         <view class="input-item">
-          <text class="tit">用户名</text>
-          <input
-            type="text"
-            v-model="formData.username"
-            placeholder="请输入用户名"
-            :maxlength="20"
-          />
-        </view>
-        <view class="input-item">
           <text class="tit">手机号</text>
           <input
             type="number"
-            v-model="formData.telephone"
+            v-model="formData.phone"
             placeholder="请输入手机号"
             :maxlength="11"
           />
         </view>
         <view class="input-item">
-          <text class="tit">密码</text>
-          <input
-            v-model="formData.password"
-            placeholder="8-18位不含特殊字符的数字、字母组合"
-            placeholder-class="input-empty"
-            :maxlength="20"
-            password
-          />
-        </view>
-        <view class="input-item">
-          <text class="tit">验证码</text>
-          <view class="auth-code-row">
+          <text class="tit">图形验证码</text>
+          <view class="captcha-row">
             <input
               type="text"
-              v-model="formData.authCode"
-              placeholder="请输入验证码"
+              v-model="captchaText"
+              placeholder="请输入图形验证码"
+              :maxlength="4"
+            />
+            <image class="captcha-img" :src="captchaImage" mode="aspectFit" @click="loadCaptcha"></image>
+          </view>
+        </view>
+        <view class="input-item">
+          <text class="tit">短信验证码</text>
+          <view class="auth-code-row">
+            <input
+              type="number"
+              v-model="formData.smsCode"
+              placeholder="请输入短信验证码"
               :maxlength="6"
             />
             <button
               class="get-code-btn"
-              :class="{ disabled: countdown > 0 }"
-              :disabled="countdown > 0"
-              @click="handleGetAuthCode"
+              :class="{ disabled: smsCountdown > 0 }"
+              :disabled="smsCountdown > 0"
+              @click="handleGetSmsCode"
             >
-              {{ countdown > 0 ? `${countdown}s后重试` : '获取验证码' }}
+              {{ smsCountdown > 0 ? `${smsCountdown}s后重试` : '获取验证码' }}
             </button>
+          </view>
+        </view>
+        <view class="input-item">
+          <text class="tit">密码</text>
+          <view class="password-row">
+            <input
+              v-model="formData.password"
+              placeholder="8-18位不含特殊字符的数字、字母组合"
+              placeholder-class="input-empty"
+              :maxlength="20"
+              :password="!showPassword"
+            />
+            <view
+              class="eye-icon"
+              :class="showPassword ? 'eye-open' : 'eye-close'"
+              @click="togglePassword"
+            ></view>
           </view>
         </view>
       </view>
@@ -74,67 +84,53 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { registerAPI, getAuthCodeAPI } from '@/apis/member'
+import { registerAPI } from '@/apis/member'
 import type { RegisterParam } from '@/types/member'
+import { useSmsCode } from '@/composables/useSmsCode'
 
 // ===== 页面数据 =====
 // 页面模式：qrcode=二维码页面, register=注册表单
 const pageMode = ref<'qrcode' | 'register'>('qrcode')
 // 注册表单数据
 const formData = ref<RegisterParam>({
-  username: '',
+  phone: '',
   password: '',
-  telephone: '',
-  authCode: '',
+  smsCode: '',
 })
+// 密码是否明文显示
+const showPassword = ref(false)
+// 切换密码可见性
+const togglePassword = () => {
+  showPassword.value = !showPassword.value
+}
 // 注册加载状态
 const registering = ref(false)
-// 验证码倒计时（秒）
-const countdown = ref(0)
-// 倒计时定时器
-let countdownTimer: ReturnType<typeof setInterval> | null = null
+// 图形验证码 + 短信验证码获取逻辑
+const { captchaImage, captchaText, smsCountdown, loadCaptcha, sendSmsCode } = useSmsCode()
 
 // ===== 生命周期 =====
 // 页面加载时根据参数设置模式
 onLoad((options) => {
   if (options?.mode === 'register') {
     pageMode.value = 'register'
+    loadCaptcha()
   } else {
     pageMode.value = 'qrcode'
   }
 })
 
-// 获取验证码
-const handleGetAuthCode = async () => {
-  if (!formData.value.telephone) {
-    uni.showToast({
-      title: '请输入手机号',
-      icon: 'none',
-    })
-    return
-  }
-  if (!/^1[3-9]\d{9}$/.test(formData.value.telephone)) {
-    uni.showToast({
-      title: '手机号格式不正确',
-      icon: 'none',
-    })
-    return
-  }
-
+// 获取短信验证码
+const handleGetSmsCode = async () => {
   try {
-    const res = await getAuthCodeAPI(formData.value.telephone)
-    // 模拟验证码展示：弹出5秒toast让用户获取验证码
-    const code = res.data || '验证码已发送'
+    await sendSmsCode(formData.value.phone)
     uni.showToast({
-      title: `验证码：${code}`,
+      title: '验证码已发送',
       icon: 'none',
-      duration: 5000,
     })
-    // 开始60秒倒计时
-    startCountdown()
-  } catch {
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '获取验证码失败，请重试'
     uni.showToast({
-      title: '获取验证码失败',
+      title: msg,
       icon: 'none',
     })
   }
@@ -142,12 +138,8 @@ const handleGetAuthCode = async () => {
 
 // 注册
 const handleRegister = async () => {
-  const { username, telephone, password, authCode } = formData.value
-  if (!username) {
-    uni.showToast({ title: '请输入用户名', icon: 'none' })
-    return
-  }
-  if (!telephone) {
+  const { phone, password, smsCode } = formData.value
+  if (!phone) {
     uni.showToast({ title: '请输入手机号', icon: 'none' })
     return
   }
@@ -155,8 +147,8 @@ const handleRegister = async () => {
     uni.showToast({ title: '请输入密码', icon: 'none' })
     return
   }
-  if (!authCode) {
-    uni.showToast({ title: '请输入验证码', icon: 'none' })
+  if (!smsCode) {
+    uni.showToast({ title: '请输入短信验证码', icon: 'none' })
     return
   }
 
@@ -178,25 +170,6 @@ const handleRegister = async () => {
   } finally {
     registering.value = false
   }
-}
-
-// ===== 其他方法 =====
-// 开始60秒倒计时
-const startCountdown = () => {
-  countdown.value = 60
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-  }
-  countdownTimer = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      countdown.value = 0
-      if (countdownTimer) {
-        clearInterval(countdownTimer)
-        countdownTimer = null
-      }
-    }
-  }, 1000)
 }
 
 // 返回上一页
@@ -356,6 +329,36 @@ page {
   }
 }
 
+.password-row {
+  display: flex;
+  align-items: center;
+  flex: 1;
+
+  input {
+    flex: 1;
+  }
+}
+
+.eye-icon {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  margin-left: 16rpx;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: center;
+}
+
+/* 睁眼（明文可见，点击可隐藏） */
+.eye-open {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+}
+
+/* 闭眼（明文隐藏，点击可显示） */
+.eye-close {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cline x1='1' y1='1' x2='23' y2='23'/%3E%3C/svg%3E");
+}
+
 .auth-code-row {
   display: flex;
   align-items: center;
@@ -387,6 +390,25 @@ page {
       color: $font-color-disabled;
       border-color: $font-color-disabled;
     }
+  }
+}
+
+.captcha-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+
+  input {
+    flex: 1;
+  }
+
+  .captcha-img {
+    flex-shrink: 0;
+    width: 180rpx;
+    height: 60rpx;
+    border-radius: 8rpx;
+    margin-left: 20rpx;
+    background: #f2f3f5;
   }
 }
 

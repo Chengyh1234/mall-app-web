@@ -139,6 +139,30 @@ export type OrderParam = {
   useIntegration: number
 }
 
+/** 立即购买生成确认单请求参数（对应后端 BuyNowConfirmParam） */
+export type BuyNowConfirmParam = {
+  /** 商品SKU ID */
+  productSkuId: number
+  /** 购买数量 */
+  quantity: number
+}
+
+/** 立即购买生成订单请求参数（对应后端 BuyNowParam，继承 OrderParam） */
+export type BuyNowParam = Omit<OrderParam, 'cartIds'> & {
+  /** 商品SKU ID */
+  productSkuId: number
+  /** 购买数量 */
+  quantity: number
+}
+
+/** 秒杀/限时购生成订单请求参数（对应后端 FlashPromotionOrderParam，继承 BuyNowParam） */
+export type FlashPromotionOrderParam = BuyNowParam & {
+  /** 限时购活动 ID */
+  flashPromotionId?: number
+  /** 限时购场次 ID */
+  sessionId?: number
+}
+
 /** 生成订单返回结果（对应后端 OrderResult） */
 export type GenerateOrderResult = {
   /** 订单信息 */
@@ -259,8 +283,6 @@ export type OmsOrderDetail = {
   receiverRegion: string
   /** 详细地址 */
   receiverDetailAddress: string
-  /** 收货人邮编 */
-  receiverPostCode: string
   /** 物流公司 */
   deliveryCompany: string
   /** 物流单号 */

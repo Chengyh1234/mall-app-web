@@ -21,16 +21,6 @@
       />
     </view>
     <view class="row b-b">
-      <text class="tit">邮政编码</text>
-      <input
-        class="input"
-        type="number"
-        v-model="addressData.postCode"
-        placeholder="收货人邮政编码"
-        placeholder-class="placeholder"
-      />
-    </view>
-    <view class="row b-b">
       <text class="tit">所在区域</text>
       <input
         class="input"
@@ -76,7 +66,6 @@ const manageType = ref('')
 const addressData = ref<MemberReceiveAddress>({
   name: '',
   phoneNumber: '',
-  postCode: '',
   detailAddress: '',
   defaultStatus: 0,
   province: '',

@@ -65,6 +65,22 @@ export type SmsHomeAdvertise = {
   createTime: string
 }
 
+/** 秒杀活动场次（来自 /home/flashPromotion/list） */
+export type FlashPromotionItem = {
+  /** 秒杀活动 ID（下单时需随 flashPromotionId 传给生成订单接口） */
+  flashPromotionId: number
+  /** 场次 ID */
+  id: number
+  /** 场次名称 */
+  name: string
+  /** 本场开始时间 */
+  startTime: string
+  /** 本场结束时间 */
+  endTime: string
+  /** 本场商品列表 */
+  productList: PmsProduct[]
+}
+
 /** 首页秒杀信息 */
 export type HomeFlashPromotion = {
   /** 开始时间 */

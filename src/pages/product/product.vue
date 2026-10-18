@@ -5,7 +5,7 @@
       <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
       <view class="navbar-content">
         <view class="nav-back" @click="handleGoBack">
-          <view class="back-arrow" :style="{ borderColor: navIconColor }"></view>
+          <view class="back-arrow"></view>
         </view>
         <text class="nav-title" :style="{ opacity: navTitleOpacity }">详情展示</text>
       </view>
@@ -17,7 +17,14 @@
 
     <!-- 轮播图 -->
     <view class="carousel">
-      <swiper indicator-dots circular :duration="400">
+      <swiper
+        v-if="imgList.length > 0"
+        indicator-dots
+        circular
+        :autoplay="imgList.length > 1"
+        :interval="3000"
+        :duration="400"
+      >
         <swiper-item class="swiper-item" v-for="(item, index) in imgList" :key="index">
           <view class="image-wrapper">
             <image :src="item" class="loaded" mode="aspectFill"></image>
@@ -33,8 +40,8 @@
       <text class="title2">{{ product.subTitle }}</text>
       <view class="price-box">
         <text class="price-tip">¥</text>
-        <text class="price">{{ product.price }}</text>
-        <text class="m-price">¥{{ product.originalPrice }}</text>
+        <text class="price">{{ displayPrice }}</text>
+        <text class="m-price" v-if="originalPriceText">¥{{ originalPriceText }}</text>
       </view>
       <view class="bot-row">
         <text>销量: {{ product.sale }}</text>
@@ -44,18 +51,18 @@
     </view>
 
     <!-- 分享 -->
-    <view class="share-section" @click="handleShare">
-      <view class="share-icon">
-        <text class="yticon icon-xingxing"></text>
-        返
-      </view>
-      <text class="tit">该商品分享可领49减10红包</text>
-      <text class="yticon icon-bangzhu1"></text>
-      <view class="share-btn">
-        立即分享
-        <text class="yticon icon-you"></text>
-      </view>
-    </view>
+    <!--<view class="share-section" @click="handleShare">-->
+    <!--  <view class="share-icon">-->
+    <!--    <text class="yticon icon-xingxing"></text>-->
+    <!--    返-->
+    <!--  </view>-->
+    <!--  <text class="tit">该商品分享可领49减10红包</text>-->
+    <!--  <text class="yticon icon-bangzhu1"></text>-->
+    <!--  <view class="share-btn">-->
+    <!--    立即分享-->
+    <!--    <text class="yticon icon-you"></text>-->
+    <!--  </view>-->
+    <!--</view>-->
 
     <!-- 商品规格、参数、优惠券等 -->
     <view class="c-list">
@@ -98,26 +105,76 @@
     <view class="eva-section">
       <view class="e-header">
         <text class="tit">评价</text>
-        <text>(86)</text>
-        <text class="tip">好评率 100%</text>
+        <text>({{ commentTotal }})</text>
+        <text class="tip">好评率 {{ commentGoodRate }}%</text>
         <text class="yticon icon-you"></text>
       </view>
-      <view class="eva-box">
+      <view v-if="commentList.length === 0" class="no-comment">暂无评价</view>
+      <view v-for="(item, index) in commentList" :key="index" class="eva-box">
         <image
           class="portrait"
-          src="http://img3.imgtn.bdimg.com/it/u=1150341365,1327279810&fm=26&gp=0.jpg"
+          :src="item.memberIcon || '/static/missing-face.png'"
           mode="aspectFill"
         ></image>
         <view class="right">
-          <text class="name">Leo yo</text>
-          <text class="con"
-            >商品收到了，79元两件，质量不错，试了一下有点瘦，但是加个外罩很漂亮，我很喜欢</text
-          >
+          <view class="head">
+            <text class="name">{{ item.memberNickName || '匿名用户' }}</text>
+            <uni-rate :value="item.star" :disabled="true" :size="12" />
+          </view>
+          <text class="con">{{ item.content }}</text>
+          <!-- 晒图 -->
+          <view v-if="item.pics" class="pics">
+            <image
+              v-for="(pic, picIndex) in item.pics.split(',')"
+              :key="picIndex"
+              :src="pic"
+              mode="aspectFill"
+              @click="previewImage(pic)"
+            ></image>
+          </view>
+          <!-- 回复列表 -->
+          <view v-if="item.replayList && item.replayList.length > 0" class="replay-box">
+            <view v-for="(reply, replyIndex) in item.replayList" :key="replyIndex" class="replay-item">
+              <text class="replay-name">{{ reply.memberNickName || '匿名用户' }}：</text>
+              <text class="replay-con">{{ reply.content }}</text>
+            </view>
+          </view>
           <view class="bot">
-            <text class="attr">购买类型：XL 红色</text>
-            <text class="time">2019-04-01 19:21</text>
+            <text v-if="formatCommentAttr(item.productAttribute)" class="attr"
+              >规格：{{ formatCommentAttr(item.productAttribute) }}</text
+            >
+            <text class="time">{{ formatDateTime(item.createTime) }}</text>
+          </view>
+          <view class="action-row">
+            <view class="action-item" @click="handleLikeComment(item)">
+              <text class="yticon icon-dianzan-ash"></text>
+              <text>{{ item.collectCouont || 0 }}</text>
+            </view>
+            <view class="action-item" @click="handleReplyComment(item)">
+              <text class="yticon icon-pinglun-copy"></text>
+              <text>{{ item.replayCount || 0 }}</text>
+            </view>
           </view>
         </view>
+      </view>
+      <view v-if="commentList.length > 0 && !commentFinished" class="load-more" @click="loadComments()">
+        加载更多
+      </view>
+      <view v-if="commentList.length > 0 && commentFinished" class="load-more">没有更多了</view>
+    </view>
+
+    <!-- 回复评论弹层 -->
+    <view class="reply-popup" :class="{ show: replyPopupShow }" @touchmove.stop.prevent>
+      <view class="mask" @click="closeReplyPopup"></view>
+      <view class="reply-layer" @click.stop>
+        <view class="reply-title">回复评论</view>
+        <textarea
+          v-model="replyContent"
+          class="reply-textarea"
+          placeholder="请输入回复内容"
+          :maxlength="200"
+        ></textarea>
+        <button class="reply-btn" @click="submitReply">提交回复</button>
       </view>
     </view>
 
@@ -160,7 +217,7 @@
         <text>收藏</text>
       </view>
 
-      <view class="action-btn-group">
+      <view class="action-btn-group" v-if="!isFlash">
         <button type="primary" class="action-btn no-border buy-now-btn" @click="handleBuy">
           立即购买
         </button>
@@ -168,6 +225,15 @@
           加入购物车
         </button>
       </view>
+      <!-- 秒杀商品：独立"立即抢购"，不加入购物车、不走普通下单 -->
+      <button class="flash-buy-btn" v-else @click="handleBuy">
+        立即抢购
+      </button>
+    </view>
+
+    <!-- 回到顶部 -->
+    <view class="back-to-top" :class="{ show: showBackToTop }" @click="handleScrollToTop">
+      <text class="yticon icon-shang"></text>
     </view>
 
     <!-- 规格-模态层弹窗 -->
@@ -177,7 +243,7 @@
         <view class="a-t">
           <image :src="product.pic"></image>
           <view class="right">
-            <text class="price">¥{{ product.price }}</text>
+            <text class="price">¥{{ displayPrice }}</text>
             <text class="stock">库存：{{ product.stock }}件</text>
             <view class="selected">
               已选：
@@ -202,7 +268,17 @@
             </template>
           </view>
         </view>
-        <button class="btn" @click="handleToggleSpec">完成</button>
+        <view class="buy-quantity">
+          <text class="label">数量</text>
+          <uni-number-box
+            class="step"
+            :min="1"
+            :max="product.stock || 1"
+            :value="buyQuantity"
+            @eventChange="handleQuantityChange"
+          ></uni-number-box>
+        </view>
+        <button class="btn" @click="handleSpecConfirm">完成</button>
       </view>
     </view>
 
@@ -216,6 +292,28 @@
             <view class="con">
               <text class="con t-r">{{ item.value }}</text>
             </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 相关推荐（ES 推荐） -->
+    <view class="recommend-section" v-if="recommendList.length > 0">
+      <view class="section-title">相关推荐</view>
+      <view class="recommend-list">
+        <view
+          class="recommend-item"
+          v-for="item in recommendList"
+          :key="item.id"
+          @click="handleNavToDetail(item.id)"
+        >
+          <view class="image-wrapper">
+            <image :src="item.pic" mode="aspectFill"></image>
+          </view>
+          <text class="title clamp">{{ item.name }}</text>
+          <view class="price-box">
+            <text class="price">¥{{ item.price }}</text>
+            <text>已售 {{ item.sale }}</text>
           </view>
         </view>
       </view>
@@ -255,9 +353,11 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { onLoad, onPageScroll } from '@dcloudio/uni-app'
+import { onLoad, onPageScroll, onReachBottom } from '@dcloudio/uni-app'
 import { getProductDetailAPI } from '@/apis/product'
+import { getCommentListAPI, likeCommentAPI, replyCommentAPI } from '@/apis/comment'
 import { addCartAPI } from '@/apis/cart'
+import { esRecommendProductAPI } from '@/apis/esProduct'
 import { getProductCouponListAPI, addMemberCouponAPI } from '@/apis/coupon'
 import { createReadHistoryAPI } from '@/apis/memberReadHistory'
 import {
@@ -277,9 +377,12 @@ import type {
   ServiceItem,
   ShareItem,
 } from '@/types/product'
+import type { EsProduct } from '@/types/esProduct'
 import type { PmsBrand } from '@/types/brand'
+import type { PmsCommentDetail } from '@/types/comment'
 import type { SmsCoupon } from '@/types/coupon'
 import { formatDate } from '@/utils/date'
+import uniNumberBox from '@/components/uni-number-box.vue'
 
 // ===== 导航栏相关 =====
 const statusBarHeight = ref(0)
@@ -296,11 +399,8 @@ const navTitleOpacity = computed(() => {
   return Math.min(scrollY.value / 200, 1)
 })
 
-// 导航栏图标颜色：初始白色（在轮播图上），滚动后变深色
-const navIconColor = computed(() => {
-  const progress = Math.min(scrollY.value / 200, 1)
-  return progress > 0.5 ? '#333' : '#fff'
-})
+// 是否显示回到顶部按钮：滚动超过一定距离后显示
+const showBackToTop = computed(() => scrollY.value > 600)
 
 // ===== 常量 =====
 
@@ -326,11 +426,37 @@ const specClass = ref<'none' | 'show' | 'hide'>('none')
 const attrClass = ref<'none' | 'show' | 'hide'>('none')
 const couponState = ref(0)
 
+// 规格弹窗本次打开的目的：'buy' 表示选完规格数量后立即购买，否则仅查看/选择
+const specAction = ref<'buy' | ''>('')
+// 立即购买数量
+const buyQuantity = ref(1)
+
 // 商品数据
 const product = ref<PmsProduct>({} as PmsProduct)
 const brand = ref<PmsBrand>({} as PmsBrand)
 const imgList = ref<string[]>([])
 const desc = ref('')
+
+// ===== 秒杀上下文 =====
+// 从专区进入时携带：活动ID、场次ID、秒杀价；null 表示普通商品
+const flashPromotionId = ref<number | null>(null)
+const sessionId = ref<number | null>(null)
+const flashPurchasePrice = ref<number | null>(null)
+// 是否为秒杀抢购商品（决定底部按钮展示与下单接口分流）
+const isFlash = computed(() => flashPromotionId.value != null)
+// 展示价格：秒杀时用秒杀价，否则用商品当前价
+const displayPrice = computed(() =>
+  isFlash.value ? flashPurchasePrice.value ?? product.value.price : product.value.price,
+)
+// 划线原价：秒杀时用商品原价，普通场景用 originalPrice
+const originalPriceText = computed<string>(() => {
+  if (isFlash.value) {
+    return product.value.price > displayPrice.value ? String(product.value.price) : ''
+  }
+  return product.value.originalPrice && product.value.originalPrice > product.value.price
+    ? String(product.value.originalPrice)
+    : ''
+})
 
 // 规格相关
 const specList = ref<PmsProductAttribute[]>([])
@@ -345,6 +471,22 @@ const serviceList = ref<string[]>([])
 
 // 优惠券
 const couponList = ref<SmsCoupon[]>([])
+
+// 相关推荐（ES）
+const recommendList = ref<EsProduct[]>([])
+
+// 评论相关
+const commentList = ref<PmsCommentDetail[]>([])
+const commentTotal = ref(0)
+const commentPageNum = ref(1)
+const commentPageSize = ref(5)
+const commentFinished = ref(false)
+const commentLoading = ref(false)
+
+// 回复弹层
+const replyPopupShow = ref(false)
+const replyCommentId = ref<number | null>(null)
+const replyContent = ref('')
 
 // 格式化时间（保留到秒）
 const formatDateTime = (time: string | null | undefined): string => {
@@ -370,6 +512,24 @@ const shareList = ref<ShareItem[]>([])
 
 // 会员状态
 const memberStore = useMemberStore()
+
+// 加载相关推荐（ES 按当前商品推荐）
+const loadRecommend = async (id: number) => {
+  try {
+    const res = await esRecommendProductAPI({ id, pageNum: 0, pageSize: 6 })
+    recommendList.value = res.data?.list || []
+  } catch (error) {
+    console.error('加载相关推荐失败:', error)
+    recommendList.value = []
+  }
+}
+
+// 跳转商品详情
+const handleNavToDetail = (id: number) => {
+  uni.redirectTo({
+    url: `/pages/product/product?id=${id}`,
+  })
+}
 
 // ===== 数据加载 =====
 
@@ -398,6 +558,8 @@ const loadData = async (id: number) => {
       initProductDesc()
       saveReadHistory()
       initProductCollection()
+      loadComments()
+      loadRecommend(id)
     }
   } catch (error) {
     console.error('加载商品详情失败:', error)
@@ -413,6 +575,10 @@ onLoad((options) => {
   statusBarHeight.value = systemInfo.statusBarHeight || 0
 
   const id = options?.id ? Number(options.id) : 0
+  // 秒杀上下文（从秒杀专区进入时携带）
+  flashPromotionId.value = options?.flashPromotionId ? Number(options.flashPromotionId) : null
+  sessionId.value = options?.sessionId ? Number(options.sessionId) : null
+  flashPurchasePrice.value = options?.flashPrice ? Number(options.flashPrice) : null
   shareList.value = defaultShareList
   loadData(id)
 })
@@ -420,6 +586,11 @@ onLoad((options) => {
 // 监听页面滚动
 onPageScroll((e: { scrollTop: number }) => {
   scrollY.value = e.scrollTop
+})
+
+// 页面触底加载更多评论
+onReachBottom(() => {
+  loadComments()
 })
 
 // ===== 初始化方法 =====
@@ -576,6 +747,101 @@ const initProductDesc = () => {
 
 // ===== 业务方法 =====
 
+// 好评率（基于已加载评论，star>=4 视为好评）
+const commentGoodRate = computed(() => {
+  if (commentList.value.length === 0) return 100
+  const goodCount = commentList.value.filter((c) => c.star >= 4).length
+  return Math.round((goodCount / commentList.value.length) * 100)
+})
+
+// 加载评论列表（分页）
+const loadComments = async () => {
+  if (commentLoading.value || commentFinished.value) return
+  commentLoading.value = true
+  try {
+    const res = await getCommentListAPI(
+      product.value.id,
+      commentPageNum.value,
+      commentPageSize.value,
+    )
+    const list = res.data.list || []
+    commentTotal.value = res.data.total || 0
+    commentList.value = commentList.value.concat(list)
+    if (list.length < commentPageSize.value) {
+      commentFinished.value = true
+    } else {
+      commentPageNum.value++
+    }
+  } catch (e) {
+    console.error('加载评论列表失败', e)
+  } finally {
+    commentLoading.value = false
+  }
+}
+
+// 点赞评论
+const handleLikeComment = async (comment: PmsCommentDetail) => {
+  try {
+    await likeCommentAPI(comment.id)
+    comment.collectCouont = (comment.collectCouont || 0) + 1
+  } catch (e) {
+    console.error('点赞评论失败', e)
+  }
+}
+
+// 打开回复弹层
+const handleReplyComment = (comment: PmsCommentDetail) => {
+  replyCommentId.value = comment.id
+  replyContent.value = ''
+  replyPopupShow.value = true
+}
+
+// 关闭回复弹层
+const closeReplyPopup = () => {
+  replyPopupShow.value = false
+}
+
+// 提交回复
+const submitReply = async () => {
+  const content = replyContent.value.trim()
+  if (!content) {
+    uni.showToast({ icon: 'none', title: '请输入回复内容' })
+    return
+  }
+  if (replyCommentId.value == null) return
+  try {
+    await replyCommentAPI({ commentId: replyCommentId.value, content })
+    uni.showToast({ icon: 'success', title: '回复成功' })
+    replyPopupShow.value = false
+    // 重新加载评论，刷新回复列表
+    commentList.value = []
+    commentPageNum.value = 1
+    commentFinished.value = false
+    loadComments()
+  } catch (e) {
+    console.error('回复评论失败', e)
+  }
+}
+
+// 预览图片
+const previewImage = (url: string) => {
+  uni.previewImage({ urls: [url], current: url })
+}
+
+// 格式化评论规格（兼容JSON字符串与纯文本）
+const formatCommentAttr = (attr?: string): string => {
+  if (!attr) return ''
+  try {
+    const attrArr = JSON.parse(attr)
+    if (Array.isArray(attrArr)) {
+      return attrArr.map((a) => `${a.key}:${a.value}`).join(';')
+    }
+  } catch {
+    // 非JSON格式则原样返回
+  }
+  return attr
+}
+
 // 保存浏览记录
 const saveReadHistory = () => {
   if (memberStore.hasLogin) {
@@ -614,6 +880,10 @@ const changeSpecInfo = () => {
     }
     product.value.stock = skuStock.stock
   }
+  // 切换规格后，将已选数量限制在库存范围内
+  if (buyQuantity.value > product.value.stock) {
+    buyQuantity.value = product.value.stock
+  }
 }
 
 // 获取当前选中的SKU
@@ -645,6 +915,14 @@ const getSkuStock = (): PmsSkuStock | null => {
 // 返回上一页
 const handleGoBack = () => {
   uni.navigateBack({ delta: 1 })
+}
+
+// 回到顶部
+const handleScrollToTop = () => {
+  uni.pageScrollTo({
+    duration: 300,
+    scrollTop: 0,
+  })
 }
 
 // 切换规格弹窗
@@ -777,10 +1055,57 @@ const handleToggleFavorite = async () => {
 
 // 立即购买
 const handleBuy = () => {
-  uni.showToast({
-    title: '暂时只支持从购物车下单！',
-    icon: 'none',
+  if (!memberStore.hasLogin) {
+    handleCheckLogin()
+    return
+  }
+  // 打开规格弹窗，让用户确认规格与数量
+  specAction.value = 'buy'
+  specClass.value = 'show'
+}
+
+// 规格弹窗确认
+const handleSpecConfirm = () => {
+  if (specAction.value === 'buy') {
+    handleBuyNow()
+  } else {
+    handleToggleSpec()
+  }
+}
+
+// 规格弹窗数量变化
+const handleQuantityChange = (e: { number: number }) => {
+  buyQuantity.value = e.number
+}
+
+// 立即购买：校验规格与数量后跳转确认订单页
+const handleBuyNow = () => {
+  const skuStock = getSkuStock()
+  if (!skuStock) {
+    uni.showToast({
+      title: '请选择规格',
+      icon: 'none',
+    })
+    return
+  }
+  if (buyQuantity.value < 1 || buyQuantity.value > product.value.stock) {
+    uni.showToast({
+      title: '数量超出库存范围',
+      icon: 'none',
+    })
+    return
+  }
+  // 秒杀商品走秒杀下单确认流程（携带活动/场次/秒杀价）
+  const url = isFlash.value
+    ? `/pages/order/createOrder?skuId=${skuStock.id}&quantity=${buyQuantity.value}&flashPromotionId=${flashPromotionId.value}&sessionId=${sessionId.value}&flashPrice=${flashPurchasePrice.value ?? product.value.price}`
+    : `/pages/order/createOrder?skuId=${skuStock.id}&quantity=${buyQuantity.value}`
+  uni.navigateTo({
+    url,
   })
+  // 关闭规格弹窗并重置状态
+  handleToggleSpec()
+  specAction.value = ''
+  buyQuantity.value = 1
 }
 
 // 加入购物车
@@ -881,15 +1206,16 @@ page {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.3);
+    background: #fff;
     border-radius: 50%;
+    box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.2);
     z-index: 10;
 
     .back-arrow {
       width: 20rpx;
       height: 20rpx;
-      border-left: 4rpx solid currentColor;
-      border-bottom: 4rpx solid currentColor;
+      border-left: 4rpx solid #333;
+      border-bottom: 4rpx solid #333;
       transform: rotate(45deg);
       margin-left: 6rpx;
     }
@@ -1134,6 +1460,20 @@ page {
       margin-left: 10rpx;
     }
   }
+
+  .no-comment {
+    padding: 40rpx 0;
+    text-align: center;
+    font-size: $font-sm + 2rpx;
+    color: $font-color-light;
+  }
+
+  .load-more {
+    padding: 20rpx 0;
+    text-align: center;
+    font-size: $font-sm + 2rpx;
+    color: $font-color-light;
+  }
 }
 
 .eva-box {
@@ -1155,10 +1495,76 @@ page {
     color: $font-color-base;
     padding-left: 26rpx;
 
+    .head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      .name {
+        font-size: $font-base + 2rpx;
+        color: $font-color-dark;
+      }
+
+      :deep(.uni-rate) {
+        margin-left: 16rpx;
+      }
+    }
+
     .con {
       font-size: $font-base;
       color: $font-color-dark;
       padding: 20rpx 0;
+    }
+
+    /* 晒图 */
+    .pics {
+      display: flex;
+      flex-wrap: wrap;
+
+      image {
+        width: 150rpx;
+        height: 150rpx;
+        margin: 0 12rpx 12rpx 0;
+        border-radius: 6rpx;
+      }
+    }
+
+    /* 回复列表 */
+    .replay-box {
+      background: #f6f6f6;
+      border-radius: 8rpx;
+      padding: 16rpx 20rpx;
+      margin-bottom: 16rpx;
+
+      .replay-item {
+        line-height: 1.6;
+        font-size: $font-sm + 2rpx;
+        color: $font-color-base;
+
+        .replay-name {
+          color: $base-color;
+        }
+      }
+    }
+
+    /* 点赞/回复操作 */
+    .action-row {
+      display: flex;
+      align-items: center;
+      margin-top: 16rpx;
+
+      .action-item {
+        display: flex;
+        align-items: center;
+        margin-right: 40rpx;
+        font-size: $font-sm + 2rpx;
+        color: $font-color-light;
+
+        .yticon {
+          font-size: $font-base;
+          margin-right: 6rpx;
+        }
+      }
     }
 
     .bot {
@@ -1166,6 +1572,69 @@ page {
       justify-content: space-between;
       font-size: $font-sm;
       color: $font-color-light;
+    }
+  }
+}
+
+/* 回复评论弹层 */
+.reply-popup {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  display: none;
+
+  &.show {
+    display: block;
+  }
+
+  .mask {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .reply-layer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    padding: 30rpx;
+    border-radius: 16rpx 16rpx 0 0;
+
+    .reply-title {
+      font-size: $font-base + 4rpx;
+      color: $font-color-dark;
+      text-align: center;
+      margin-bottom: 20rpx;
+    }
+
+    .reply-textarea {
+      width: 100%;
+      height: 160rpx;
+      padding: 16rpx;
+      box-sizing: border-box;
+      font-size: $font-base;
+      background: #f6f6f6;
+      border-radius: 8rpx;
+    }
+
+    .reply-btn {
+      margin-top: 24rpx;
+      background: $base-color;
+      color: #fff;
+      border-radius: 40rpx;
+      font-size: $font-base;
+
+      &::after {
+        border: none;
+      }
     }
   }
 }
@@ -1394,6 +1863,26 @@ page {
     display: flex;
     flex-wrap: wrap;
   }
+
+  /* 数量选择 */
+  .buy-quantity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 30rpx;
+
+    .label {
+      font-size: $font-base + 2rpx;
+      color: $font-color-base;
+    }
+
+    /* 覆盖 uni-number-box 的绝对定位，使其在弹窗内流式布局 */
+    :deep(.uni-numbox) {
+      position: relative;
+      left: auto;
+      bottom: auto;
+    }
+  }
 }
 
 @keyframes showPopup {
@@ -1525,6 +2014,56 @@ page {
       border-radius: 0;
       background: transparent;
     }
+  }
+
+  /* 秒杀抢购按钮 */
+  .flash-buy-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 100rpx;
+    margin-left: 20rpx;
+    font-size: 34rpx;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(90deg, #ff6b3d, #fa436a);
+    border-radius: 999rpx;
+
+    &::after {
+      border: none;
+    }
+  }
+}
+
+/* 回到顶部 */
+.back-to-top {
+  position: fixed;
+  right: 30rpx;
+  bottom: calc(170rpx + env(safe-area-inset-bottom));
+  z-index: 96;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80rpx;
+  height: 80rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20rpx);
+  transition: all 0.3s ease;
+
+  .yticon {
+    font-size: 36rpx;
+    color: $font-color-base;
+  }
+
+  &.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
   }
 }
 
@@ -1676,5 +2215,68 @@ page {
 .attr-content .item-list text.selected {
   background: #fbebee;
   color: #e43a55;
+}
+
+// 相关推荐
+.recommend-section {
+  margin-top: 20rpx;
+  padding: 30rpx;
+  background: #fff;
+
+  .section-title {
+    font-size: 32rpx;
+    font-weight: 700;
+    color: #303133;
+    margin-bottom: 24rpx;
+  }
+
+  .recommend-list {
+    display: flex;
+    flex-wrap: wrap;
+
+    .recommend-item {
+      width: 48%;
+      margin-bottom: 24rpx;
+
+      &:nth-child(2n + 1) {
+        margin-right: 4%;
+      }
+
+      .image-wrapper {
+        width: 100%;
+        height: 320rpx;
+        border-radius: 8rpx;
+        overflow: hidden;
+
+        image {
+          width: 100%;
+          height: 100%;
+        }
+      }
+
+      .title {
+        display: block;
+        margin-top: 12rpx;
+        font-size: 28rpx;
+        color: #303133;
+        line-height: 1.4;
+      }
+
+      .price-box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 8rpx;
+        font-size: 24rpx;
+        color: #909399;
+
+        .price {
+          font-size: 30rpx;
+          font-weight: 600;
+          color: #e64340;
+        }
+      }
+    }
+  }
 }
 </style>

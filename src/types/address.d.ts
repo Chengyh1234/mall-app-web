@@ -15,8 +15,6 @@ export type MemberReceiveAddress = {
   phoneNumber: string
   /** 是否为默认（0-否 1-是） */
   defaultStatus?: number
-  /** 邮政编码 */
-  postCode?: string
   /** 省份/直辖市 */
   province?: string
   /** 城市 */

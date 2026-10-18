@@ -44,13 +44,14 @@
 
     <!-- 优惠明细 -->
     <view class="yt-list">
-      <view class="yt-list-cell b-b" @click="handleToggleMask('show')">
+      <view class="yt-list-cell b-b" @click="handleToggleMask('show')" v-if="!isFlash">
         <view class="cell-icon">券</view>
         <text class="cell-tit clamp">优惠券</text>
-        <text class="cell-tip active">选择优惠券</text>
+        <text class="cell-tip active" v-if="currCoupon == null">选择优惠券</text>
+        <text class="cell-tip red" v-else>-￥{{ currCoupon.amount }}</text>
         <text class="cell-more wanjia wanjia-gengduo-d"></text>
       </view>
-      <view class="yt-list-cell b-b">
+      <view class="yt-list-cell b-b" v-if="!isFlash">
         <view class="cell-icon hb">积</view>
         <text class="cell-tit clamp">积分抵扣</text>
         <input
@@ -78,12 +79,12 @@
         <text class="cell-tit clamp">活动优惠</text>
         <text class="cell-tip red">-￥{{ calcAmount.promotionAmount }}</text>
       </view>
-      <view class="yt-list-cell b-b">
+      <view class="yt-list-cell b-b" v-if="!isFlash">
         <text class="cell-tit clamp">优惠券</text>
         <text class="cell-tip red" v-if="currCoupon != null">-￥{{ currCoupon.amount }}</text>
         <text class="cell-tip red" v-else>-￥0</text>
       </view>
-      <view class="yt-list-cell b-b">
+      <view class="yt-list-cell b-b" v-if="!isFlash">
         <text class="cell-tit clamp">积分抵扣</text>
         <text class="cell-tip red">-￥{{ calcIntegrationAmount(useIntegration) }}</text>
       </view>
@@ -138,6 +139,10 @@
           </view>
           <text class="tips">{{ formatCouponUseType(item.useType) }}</text>
         </view>
+        <!-- 空态：无可用优惠券 -->
+        <view class="coupon-empty" v-if="couponList.length === 0">
+          <text class="coupon-empty-tip">暂无可用优惠券，快去领取或去管理中心发放吧</text>
+        </view>
       </view>
     </view>
   </view>
@@ -146,7 +151,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { generateConfirmOrderAPI, generateOrderAPI } from '@/apis/order'
+import {
+  generateBuyNowConfirmOrderAPI,
+  generateBuyNowOrderAPI,
+  generateConfirmOrderAPI,
+  generateFlashOrderAPI,
+  generateOrderAPI,
+} from '@/apis/order'
 import { formatDate } from '@/utils/date'
 import type { CartPromotionItem, CalcAmount, UmsIntegrationConsumeSetting } from '@/types/order'
 import type { SmsCoupon } from '@/types/coupon'
@@ -179,16 +190,53 @@ const integrationConsumeSetting = ref<UmsIntegrationConsumeSetting>(
 const memberIntegration = ref(0)
 // 购物车ID列表
 const cartIds = ref<number[]>([])
+// 下单模式：'cart' 购物车下单；'buyNow' 立即购买；'flash' 秒杀下单
+const mode = ref<'cart' | 'buyNow' | 'flash'>('cart')
+// 立即购买的商品SKU ID
+const productSkuId = ref<number | null>(null)
+// 立即购买的购买数量
+const quantity = ref(1)
+// 秒杀下单：活动ID、场次ID、秒杀价
+const flashPromotionId = ref<number | null>(null)
+const sessionId = ref<number | null>(null)
+const flashPrice = ref(0)
+// 是否秒杀模式（秒杀禁用优惠券与积分）
+const isFlash = ref(false)
 
 // ===== 加载数据 =====
 // 生成确认单信息
 const loadData = async () => {
   try {
-    const res = await generateConfirmOrderAPI(cartIds.value)
+    // 秒杀模式复用"立即购买"确认单接口：拿收货地址与商品展示信息（价格随后覆盖为秒杀价）
+    const isBuyNowLike = mode.value === 'buyNow' || mode.value === 'flash'
+    const res = isBuyNowLike
+      ? await generateBuyNowConfirmOrderAPI({
+          productSkuId: productSkuId.value!,
+          quantity: quantity.value,
+        })
+      : await generateConfirmOrderAPI(cartIds.value)
     const data = res.data
     memberReceiveAddressList.value = data.memberReceiveAddressList || []
     currentAddress.value = getDefaultAddress()
     cartPromotionItemList.value = data.cartPromotionItemList || []
+    if (isFlash.value) {
+      // 秒杀：展示秒杀价，金额=秒杀价×数量，禁用优惠券/积分
+      if (cartPromotionItemList.value.length) {
+        const it = cartPromotionItemList.value[0]
+        it.price = flashPrice.value
+        it.promotionMessage = '限时购'
+      }
+      couponList.value = []
+      calcAmount.value = {
+        totalAmount: flashPrice.value * quantity.value,
+        freightAmount: 0,
+        promotionAmount: 0,
+        payAmount: flashPrice.value * quantity.value,
+      }
+      integrationConsumeSetting.value = {} as UmsIntegrationConsumeSetting
+      memberIntegration.value = 0
+      return
+    }
     couponList.value = []
     for (const item of data.couponHistoryDetailList || []) {
       couponList.value.push(item.coupon)
@@ -229,7 +277,23 @@ defineExpose({
 
 // 页面加载时执行
 onLoad((option) => {
-  if (option?.cartIds) {
+  if (option?.skuId && option?.flashPromotionId) {
+    // 秒杀下单模式
+    mode.value = 'flash'
+    isFlash.value = true
+    productSkuId.value = Number(option.skuId)
+    quantity.value = option.quantity ? Number(option.quantity) : 1
+    flashPromotionId.value = Number(option.flashPromotionId)
+    sessionId.value = option.sessionId ? Number(option.sessionId) : null
+    flashPrice.value = option.flashPrice ? Number(option.flashPrice) : 0
+    loadData()
+  } else if (option?.skuId) {
+    // 立即购买模式
+    mode.value = 'buyNow'
+    productSkuId.value = Number(option.skuId)
+    quantity.value = option.quantity ? Number(option.quantity) : 1
+    loadData()
+  } else if (option?.cartIds) {
     cartIds.value = JSON.parse(option.cartIds)
     loadData()
   }
@@ -251,18 +315,49 @@ const stopPrevent = () => {}
 
 // 提交订单
 const handleSubmit = async () => {
-  const orderParam = {
+  const baseParam = {
     payType: 0,
     couponId: undefined as number | undefined,
-    cartIds: cartIds.value.map(Number),
     memberReceiveAddressId: currentAddress.value?.id as number | undefined,
     useIntegration: useIntegration.value,
   }
   if (currCoupon.value != null) {
-    orderParam.couponId = currCoupon.value.id
+    baseParam.couponId = currCoupon.value.id
   }
   try {
-    const res = await generateOrderAPI(orderParam)
+    let res
+    if (mode.value === 'flash') {
+      // 秒杀下单：强制禁用优惠券与积分，走秒杀独立接口
+      // 校验活动/场次参数非空且为有效数字，避免 NaN 序列化成 null 导致后端校验失败
+      // 注意：本地变量改名，避免遮蔽外层 ref 导致 TDZ 报错
+      const promotionId = Number(flashPromotionId.value)
+      const sid = Number(sessionId.value)
+      if (!Number.isFinite(promotionId) || !Number.isFinite(sid)) {
+        uni.showToast({ title: '秒杀活动信息缺失，请重新进入秒杀专区', icon: 'none' })
+        return
+      }
+      res = await generateFlashOrderAPI({
+        payType: 0,
+        couponId: undefined,
+        memberReceiveAddressId: currentAddress.value?.id,
+        useIntegration: 0,
+        productSkuId: productSkuId.value!,
+        quantity: quantity.value,
+        flashPromotionId: promotionId,
+        sessionId: sid,
+      })
+    } else if (mode.value === 'buyNow') {
+      res = await generateBuyNowOrderAPI({
+        ...baseParam,
+        productSkuId: productSkuId.value!,
+        quantity: quantity.value,
+      })
+    } else {
+      res = await generateOrderAPI({
+        ...baseParam,
+        cartIds: cartIds.value.map(Number),
+      })
+    }
     const orderId = res.data.order.id
     uni.showModal({
       title: '提示',
@@ -282,7 +377,13 @@ const handleSubmit = async () => {
       },
     })
   } catch (e) {
+    // 暴露真实错误，避免"点了没反应"：接口错误 http 层已弹 toast，这里兜底 JS 异常
     console.error('提交订单失败', e)
+    const msg =
+      (e as any)?.message && (e as any)?.message !== 'request:fail'
+        ? (e as any).message
+        : '下单失败，请稍后重试'
+    uni.showToast({ title: msg, icon: 'none', duration: 2500 })
   }
 }
 
@@ -831,6 +932,21 @@ page {
       left: auto;
       right: -6rpx;
     }
+  }
+}
+
+/* 优惠券空态 */
+.coupon-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 240rpx;
+  padding: 40rpx 60rpx;
+
+  .coupon-empty-tip {
+    font-size: 26rpx;
+    color: $font-color-light;
+    text-align: center;
   }
 }
 </style>

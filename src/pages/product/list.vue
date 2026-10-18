@@ -102,8 +102,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
-import { getCategoryTreeAPI, searchProductListAPI } from '@/apis/product'
-import type { CategoryTreeNode, ProductListParam, PmsProduct } from '@/types/product'
+import { getCategoryTreeAPI } from '@/apis/product'
+import { esSearchProductAPI, esSearchRelatedInfoAPI } from '@/apis/esProduct'
+import type { CategoryTreeNode } from '@/types/product'
+import type { EsProduct, EsProductRelatedInfo } from '@/types/esProduct'
 
 // ===== 常量 =====
 // 导航栏位置
@@ -125,11 +127,18 @@ const currentKeyword = ref('')
 // 分类树列表
 const cateList = ref<CategoryTreeNode[]>([])
 // 商品列表
-const productList = ref<PmsProduct[]>([])
+const productList = ref<EsProduct[]>([])
 // 搜索参数
-const searchParam = ref<ProductListParam>({
+const searchParam = ref<{
+  keyword?: string
+  productCategoryId?: number
+  pageNum: number
+  pageSize: number
+  sort: number
+}>({
+  keyword: undefined,
   productCategoryId: undefined,
-  pageNum: 1,
+  pageNum: 0,
   pageSize: 6,
   sort: 0,
 })
@@ -158,13 +167,13 @@ const loadData = async (type: 'refresh' | 'add' = 'add') => {
     loadingType.value = 'more'
   }
 
-  // 刷新时重置页码和列表
+  // 刷新时重置页码和列表（ES 分页从 0 开始）
   if (type === 'refresh') {
-    searchParam.value.pageNum = 1
+    searchParam.value.pageNum = 0
     productList.value = []
   }
 
-  // 设置排序参数
+  // 设置排序参数（ES sort：0相关度/2销量/3价格低到高/4价格高到低）
   if (filterIndex.value === 0) {
     searchParam.value.sort = 0
   } else if (filterIndex.value === 1) {
@@ -174,7 +183,7 @@ const loadData = async (type: 'refresh' | 'add' = 'add') => {
   }
 
   try {
-    const res = await searchProductListAPI(searchParam.value)
+    const res = await esSearchProductAPI(searchParam.value)
     const list = res.data.list
 
     if (list.length === 0) {
@@ -302,7 +311,7 @@ const handleCateChange = (item: CategoryTreeNode) => {
 }
 
 // 跳转商品详情
-const handleNavToDetail = (item: PmsProduct) => {
+const handleNavToDetail = (item: EsProduct) => {
   uni.navigateTo({
     url: `/pages/product/product?id=${item.id}`,
   })

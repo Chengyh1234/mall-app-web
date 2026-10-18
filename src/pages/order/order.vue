@@ -69,8 +69,8 @@
                 确认收货
               </button>
             </view>
-            <view v-if="item.status === 3" class="action-box b-t">
-              <button class="action-btn recom">评价商品</button>
+            <view v-if="item.status === 3 && !item.commentTime" class="action-box b-t">
+              <button class="action-btn recom" @click="navToEvaluate(item)">评价商品</button>
             </view>
           </view>
 
@@ -266,6 +266,19 @@ const handleReceiveOrder = (orderId: number) => {
 const handleShowOrderDetail = (orderId: number) => {
   uni.navigateTo({
     url: `/pages/order/orderDetail?orderId=${orderId}`,
+  })
+}
+
+// 跳转评价页（取订单第一个商品）
+const navToEvaluate = (order: OmsOrderDetail) => {
+  const orderItem = order.orderItemList && order.orderItemList[0]
+  if (!orderItem) return
+  uni.navigateTo({
+    url: `/pages/evaluate/evaluate?productId=${orderItem.productId}&productName=${encodeURIComponent(
+      orderItem.productName || '',
+    )}&productPic=${encodeURIComponent(orderItem.productPic || '')}&productAttribute=${encodeURIComponent(
+      orderItem.productAttr || '',
+    )}`,
   })
 }
 

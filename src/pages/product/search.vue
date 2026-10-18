@@ -12,6 +12,7 @@
           placeholder-class="placeholder"
           confirm-type="search"
           :focus="true"
+          @input="handleInput"
           @confirm="handleSearch"
         />
         <text
@@ -23,8 +24,38 @@
       <text class="search-action-btn" @click="handleSearch">搜索</text>
     </view>
 
+    <!-- 搜索联想建议 -->
+    <view class="suggest-section" v-if="suggestList.length > 0 && keyword">
+      <view class="suggest-header">
+        <text class="suggest-title">猜你想搜</text>
+        <view class="suggest-count">
+          <text class="suggest-count-text">{{ suggestList.length }} 条建议</text>
+        </view>
+      </view>
+      <view class="suggest-card">
+        <view
+          class="suggest-item"
+          hover-class="suggest-item-hover"
+          :hover-stay-time="50"
+          v-for="(item, index) in suggestList"
+          :key="index"
+          @click="handleSuggestClick(item)"
+        >
+          <view class="suggest-rank" :class="'rank-' + (index < 3 ? index + 1 : 'other')">
+            <text>{{ index < 3 ? index + 1 : index + 1 }}</text>
+          </view>
+          <text class="suggest-text">
+            <template v-for="(seg, i) in highlightKeyword(item)" :key="i">
+              <text :class="{ 'suggest-highlight': seg.highlight }">{{ seg.text }}</text>
+            </template>
+          </text>
+          <text class="yticon icon-arrowright suggest-arrow"></text>
+        </view>
+      </view>
+    </view>
+
     <!-- 搜索历史 -->
-    <view class="history-section" v-if="searchStore.historyList.length > 0">
+    <view class="history-section" v-if="searchStore.historyList.length > 0 && suggestList.length === 0">
       <view class="section-header">
         <text class="section-title">搜索历史</text>
         <text class="yticon icon-lajitong clear-icon" @click="handleClearHistory"></text>
@@ -55,6 +86,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useSearchStore } from '@/stores/search'
+import { esSearchSuggestAPI } from '@/apis/esProduct'
 
 // ===== Store 相关 =====
 // 获取搜索store
@@ -63,6 +95,65 @@ const searchStore = useSearchStore()
 // ===== 页面数据 =====
 // 搜索关键字
 const keyword = ref('')
+// 搜索联想建议列表
+const suggestList = ref<string[]>([])
+// 联想请求防抖定时器
+let suggestTimer: ReturnType<typeof setTimeout> | null = null
+
+// 请求搜索联想
+const fetchSuggest = async (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    suggestList.value = []
+    return
+  }
+  try {
+    const res = await esSearchSuggestAPI(trimmed)
+    suggestList.value = res.data || []
+  } catch {
+    suggestList.value = []
+  }
+}
+
+// 输入监听（防抖 300ms）
+const handleInput = (e: { detail: { value: string } }) => {
+  keyword.value = e.detail.value
+  if (suggestTimer) {
+    clearTimeout(suggestTimer)
+  }
+  suggestTimer = setTimeout(() => {
+    fetchSuggest(e.detail.value)
+  }, 300)
+}
+
+// 点击联想词直接搜索
+const handleSuggestClick = (item: string) => {
+  keyword.value = item
+  handleSearch()
+}
+
+// 将联想词按输入关键词拆分为高亮分段
+const highlightKeyword = (item: string) => {
+  const kw = keyword.value.trim()
+  if (!kw) {
+    return [{ text: item, highlight: false }]
+  }
+  const segments: { text: string; highlight: boolean }[] = []
+  let rest = item
+  let pos = rest.toLocaleLowerCase().indexOf(kw.toLocaleLowerCase())
+  while (pos !== -1 && rest.length > 0) {
+    if (pos > 0) {
+      segments.push({ text: rest.slice(0, pos), highlight: false })
+    }
+    segments.push({ text: rest.slice(pos, pos + kw.length), highlight: true })
+    rest = rest.slice(pos + kw.length)
+    pos = rest.toLocaleLowerCase().indexOf(kw.toLocaleLowerCase())
+  }
+  if (rest.length > 0) {
+    segments.push({ text: rest, highlight: false })
+  }
+  return segments.length > 0 ? segments : [{ text: item, highlight: false }]
+}
 
 // ===== 事件处理方法 =====
 // 执行搜索
@@ -170,6 +261,115 @@ const handleDeleteHistory = (item: string) => {
   font-size: 28rpx;
   color: $base-color;
   white-space: nowrap;
+}
+
+// 搜索联想建议
+.suggest-section {
+  padding: 20rpx 30rpx 0;
+
+  .suggest-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 10rpx 4rpx 20rpx;
+  }
+
+  .suggest-title {
+    font-size: 30rpx;
+    font-weight: bold;
+    color: $font-color-dark;
+  }
+
+  .suggest-count {
+    padding: 4rpx 16rpx;
+    background: #f5f6f7;
+    border-radius: 20rpx;
+  }
+
+  .suggest-count-text {
+    font-size: 22rpx;
+    color: #999;
+  }
+
+  .suggest-card {
+    background: #fff;
+    border-radius: 16rpx;
+    overflow: hidden;
+    box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.06);
+  }
+
+  .suggest-item {
+    display: flex;
+    align-items: center;
+    height: 96rpx;
+    padding: 0 24rpx;
+    border-bottom: 1rpx solid #f5f5f5;
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .suggest-item-hover {
+    background: #f7f8fa;
+  }
+
+  // 排行序号徽标
+  .suggest-rank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36rpx;
+    height: 36rpx;
+    margin-right: 20rpx;
+    border-radius: 8rpx;
+    font-size: 24rpx;
+    font-weight: 600;
+    color: #bbb;
+    background: #f2f3f5;
+
+    text {
+      line-height: 1;
+    }
+  }
+
+  .rank-1 {
+    color: #fff;
+    background: linear-gradient(135deg, #ff6b6b, #ff3d3d);
+    font-size: 28rpx;
+  }
+
+  .rank-2 {
+    color: #fff;
+    background: linear-gradient(135deg, #ffa94d, #ff922b);
+    font-size: 26rpx;
+  }
+
+  .rank-3 {
+    color: #fff;
+    background: linear-gradient(135deg, #ffd43b, #fcc419);
+    font-size: 24rpx;
+  }
+
+  .suggest-text {
+    flex: 1;
+    font-size: 28rpx;
+    color: $font-color-dark;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding-right: 12rpx;
+  }
+
+  .suggest-highlight {
+    color: $base-color;
+    font-weight: 600;
+  }
+
+  .suggest-arrow {
+    font-size: 30rpx;
+    color: #ccc;
+  }
 }
 
 // 搜索历史

@@ -1,6 +1,14 @@
 import { http } from '@/utils/http'
 import type { SmsCoupon } from '@/types/coupon'
 
+/** 优惠券详情（领券页） */
+export const getMemberCouponDetailAPI = (couponId: string) => {
+  return http<SmsCoupon>({
+    method: 'GET',
+    url: `/member/coupon/detail/${couponId}`,
+  })
+}
+
 /** 商品优惠券列表 */
 export const getProductCouponListAPI = (productId: string) => {
   return http<SmsCoupon[]>({

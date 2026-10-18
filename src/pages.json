@@ -35,8 +35,7 @@
                 "text": "\ue744",
                 "fontSize": "27",
                 "color": "#ffffff",
-                "background": "rgba(0,0,0,0)",
-                "redDot": true
+                "background": "rgba(0,0,0,0)"
               }
             ]
           }
@@ -77,8 +76,7 @@
                 "text": "\ue744",
                 "fontSize": "28",
                 "color": "#ffffff",
-                "background": "rgba(0,0,0,0)",
-                "redDot": true
+                "background": "rgba(0,0,0,0)"
               }
             ]
           }
@@ -97,6 +95,12 @@
       "style": {
         "navigationBarTitleText": "注册",
         "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/public/forgetPassword",
+      "style": {
+        "navigationBarTitleText": "忘记密码"
       }
     },
     {
@@ -133,6 +137,12 @@
       }
     },
     {
+      "path": "pages/flash/list",
+      "style": {
+        "navigationBarTitleText": "秒杀专区"
+      }
+    },
+    {
       "path": "pages/product/newProductList",
       "style": {
         "navigationBarTitleText": "新鲜好物",
@@ -166,6 +176,12 @@
       }
     },
     {
+      "path": "pages/user/profile",
+      "style": {
+        "navigationBarTitleText": "编辑资料"
+      }
+    },
+    {
       "path": "pages/order/createOrder",
       "style": {
         "navigationBarTitleText": "创建订单"
@@ -185,6 +201,12 @@
       }
     },
     {
+      "path": "pages/evaluate/evaluate",
+      "style": {
+        "navigationBarTitleText": "评价商品"
+      }
+    },
+    {
       "path": "pages/money/pay",
       "style": {
         "navigationBarTitleText": "支付订单"
@@ -200,6 +222,19 @@
       "path": "pages/coupon/couponList",
       "style": {
         "navigationBarTitleText": "优惠券列表"
+      }
+    },
+    {
+      "path": "pages/coupon/couponDetail",
+      "style": {
+        "navigationBarTitleText": "领券中心"
+      }
+    },
+    {
+      "path": "pages/message/message",
+      "style": {
+        "navigationBarTitleText": "消息通知",
+        "enablePullDownRefresh": true
       }
     },
     {
@@ -266,6 +301,13 @@
             ]
           }
         }
+      }
+    },
+    {
+      "path": "pages/user/myComment",
+      "style": {
+        "navigationBarTitleText": "我的评价",
+        "enablePullDownRefresh": true
       }
     }
   ],

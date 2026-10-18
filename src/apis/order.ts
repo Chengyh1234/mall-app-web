@@ -1,6 +1,9 @@
 import { http } from '@/utils/http'
 import type {
+  BuyNowConfirmParam,
+  BuyNowParam,
   ConfirmOrderResult,
+  FlashPromotionOrderParam,
   GenerateOrderResult,
   OrderParam,
   OmsOrderDetail,
@@ -22,6 +25,33 @@ export const generateOrderAPI = (data: OrderParam) => {
   return http<GenerateOrderResult>({
     method: 'POST',
     url: '/order/generateOrder',
+    data,
+  })
+}
+
+/** 根据立即购买信息生成确认单 */
+export const generateBuyNowConfirmOrderAPI = (data: BuyNowConfirmParam) => {
+  return http<ConfirmOrderResult>({
+    method: 'POST',
+    url: '/order/generateBuyNowConfirmOrder',
+    data,
+  })
+}
+
+/** 根据立即购买信息生成订单 */
+export const generateBuyNowOrderAPI = (data: BuyNowParam) => {
+  return http<GenerateOrderResult>({
+    method: 'POST',
+    url: '/order/generateBuyNowOrder',
+    data,
+  })
+}
+
+/** 根据秒杀/限时购信息生成订单（限时购才限购，禁用优惠券与积分） */
+export const generateFlashOrderAPI = (data: FlashPromotionOrderParam) => {
+  return http<GenerateOrderResult>({
+    method: 'POST',
+    url: '/order/generateFlashOrder',
     data,
   })
 }
@@ -85,6 +115,53 @@ export const fetchAliapyStatusAPI = (params: { outTradeNo: string }) => {
     method: 'GET',
     url: '/alipay/query',
     params,
+  })
+}
+
+/**
+ * 支付宝电脑网站支付（扫码支付）
+ * 后端 `/alipay/pay` 直接返回二维码内容（纯文本链接，非 CommonResult JSON），
+ * 故不走通用 http()，改用原生 uni.request 读取响应体。拦截器会自动拼接 baseURL 与 token。
+ */
+export const fetchAlipayPayAPI = (params: {
+  outTradeNo: string
+  subject: string
+  totalAmount: number
+}): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: '/alipay/pay',
+      method: 'GET',
+      data: params,
+      // 后端返回纯文本二维码链接，按文本读取，避免默认 json 解析纯文本报错
+      dataType: 'text',
+      success(res) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          const raw = res.data as any
+          let qr = ''
+          if (typeof raw === 'string') {
+            const t = raw.trim()
+            // 兼容：纯文本链接 / CommonResult JSON 字符串
+            if (t.startsWith('{')) {
+              try {
+                const obj = JSON.parse(t)
+                qr = obj.data != null ? obj.data : obj.qrCode ?? ''
+              } catch (e) {
+                qr = t
+              }
+            } else {
+              qr = t
+            }
+          } else if (raw && typeof raw === 'object') {
+            qr = raw.data != null ? raw.data : raw.qrCode ?? ''
+          }
+          resolve(qr.trim())
+        } else {
+          reject(res)
+        }
+      },
+      fail: reject,
+    })
   })
 }
 

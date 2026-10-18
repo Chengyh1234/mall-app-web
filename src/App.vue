@@ -1,15 +1,5 @@
 <script setup lang="ts">
-import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
-
-onLaunch(() => {
-  console.log('App Launch')
-})
-onShow(() => {
-  console.log('App Show')
-})
-onHide(() => {
-  console.log('App Hide')
-})
+// 未读消息数请求只由首页/个人中心页面触发（进入页面刷新并轮询、离开即停止），不在 App 全局发起
 </script>
 
 <style lang="scss">

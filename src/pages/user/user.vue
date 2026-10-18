@@ -5,10 +5,16 @@
       <!-- #ifdef MP -->
       <view class="mp-nav-btns">
         <text class="yticon icon-shezhi nav-btn" @click="handleNavTo('/pages/set/set')"></text>
-        <text class="yticon icon-icon-- nav-btn" @click="handleNavToNotice"></text>
+        <view class="nav-btn-box">
+          <text class="yticon icon-icon-- nav-btn" @click="handleNavToNotice"></text>
+          <!-- 未读消息数字徽标（为 0 时不显示） -->
+          <text v-if="messageStore.unreadCount > 0" class="nav-badge">
+            {{ messageStore.unreadCount > 99 ? '99+' : messageStore.unreadCount }}
+          </text>
+        </view>
       </view>
       <!-- #endif -->
-      <view class="user-info-box">
+      <view class="user-info-box" @click="handleNavTo('/pages/user/profile')">
         <view class="portrait-box">
           <image class="portrait" :src="memberInfo?.icon || '/static/missing-face.png'"></image>
         </view>
@@ -88,6 +94,13 @@
       <!-- 浏览历史 -->
       <view class="history-section icon">
         <mix-list-cell
+          icon="icon-xiaoxi"
+          iconColor="#fa436a"
+          title="消息中心"
+          :badge="messageStore.unreadCount"
+          @eventClick="handleNavTo('/pages/message/message')"
+        ></mix-list-cell>
+        <mix-list-cell
           icon="icon-dizhi"
           iconColor="#5fcda2"
           title="地址管理"
@@ -111,7 +124,12 @@
           title="我的收藏"
           @eventClick="handleNavTo('/pages/user/productCollection')"
         ></mix-list-cell>
-        <mix-list-cell icon="icon-pingjia" iconColor="#ee883b" title="我的评价"></mix-list-cell>
+        <mix-list-cell
+          icon="icon-pingjia"
+          iconColor="#ee883b"
+          title="我的评价"
+          @eventClick="handleNavTo('/pages/user/myComment')"
+        ></mix-list-cell>
         <mix-list-cell
           icon="icon-shezhi1"
           iconColor="#e07472"
@@ -126,14 +144,17 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { onShow, onNavigationBarButtonTap } from '@dcloudio/uni-app'
+import { onShow, onHide, onNavigationBarButtonTap } from '@dcloudio/uni-app'
 import { useMemberStore } from '@/stores/member'
+import { useMessageStore } from '@/stores/message'
 import { getMemberCouponListAPI } from '@/apis/coupon'
 import mixListCell from '@/components/mix-list-cell.vue'
 
 // ===== Store 相关 =====
 // 获取会员store
 const memberStore = useMemberStore()
+// 消息store
+const messageStore = useMessageStore()
 // 是否登录
 const hasLogin = computed(() => !!memberStore.memberInfo)
 // 会员信息
@@ -175,9 +196,55 @@ const loadData = async () => {
 
 // ===== 生命周期 =====
 // 页面显示时加载数据
-onShow(() => {
+onShow(async () => {
+  // 进入个人中心时刷新未读数并开启轮询
+  await messageStore.startPolling()
+  // App 端导航栏消息按钮红点：有未读时显示数字，无未读时隐藏
+  // #ifdef APP-PLUS
+  const pages = getCurrentPages()
+  const page = pages[pages.length - 1]
+  // @ts-ignore
+  const currentWebview = page.$getAppWebview()
+  // 延迟到导航栏渲染完成后设置红点，避免首次进入页面时调用无效
+  setTimeout(() => {
+    if (messageStore.unreadCount > 0) {
+      currentWebview.showTitleNViewButtonRedDot({
+        index: 1,
+        count: messageStore.unreadCount,
+      })
+    } else {
+      currentWebview.hideTitleNViewButtonRedDot({ index: 1 })
+    }
+  }, 100)
+  // #endif
+  // #ifdef H5
+  syncUnreadBadge()
+  // #endif
   loadData()
 })
+
+// 离开个人中心时停止未读消息轮询，避免在其他页面继续发请求
+onHide(() => {
+  messageStore.stopPolling()
+})
+
+// H5 端同步导航栏消息按钮未读徽标（无原生红点 API，操作 DOM：uni-h5 内置 .uni-page-head-btn-red-dot 类 + badge-text 属性渲染数字）
+// #ifdef H5
+const syncUnreadBadge = () => {
+  setTimeout(() => {
+    // 按钮渲染顺序与 pages.json buttons 配置一致：index 1 为消息按钮
+    const msgBtn = document.querySelectorAll('.uni-page-head-btn')[1]
+    if (!msgBtn) return
+    if (messageStore.unreadCount > 0) {
+      msgBtn.classList.add('uni-page-head-btn-red-dot')
+      msgBtn.setAttribute('badge-text', messageStore.unreadCount > 99 ? '99+' : String(messageStore.unreadCount))
+    } else {
+      msgBtn.classList.remove('uni-page-head-btn-red-dot')
+      msgBtn.removeAttribute('badge-text')
+    }
+  }, 100)
+}
+// #endif
 
 // 导航栏按钮点击事件
 onNavigationBarButtonTap((e: { index: number }) => {
@@ -195,7 +262,7 @@ onNavigationBarButtonTap((e: { index: number }) => {
     })
     // #endif
     uni.navigateTo({
-      url: '/pages/notice/notice',
+      url: '/pages/message/message',
     })
   }
 })
@@ -214,7 +281,7 @@ const handleNavTo = (url: string) => {
 // 跳转到通知页（小程序端导航栏右侧按钮）
 const handleNavToNotice = () => {
   uni.navigateTo({
-    url: '/pages/notice/notice',
+    url: '/pages/message/message',
   })
 }
 
@@ -289,6 +356,29 @@ const handleCoverTouchend = () => {
     .nav-btn {
       font-size: 48rpx;
       color: #fff;
+    }
+
+    .nav-btn-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .nav-badge {
+        position: absolute;
+        top: -10rpx;
+        right: -14rpx;
+        min-width: 30rpx;
+        height: 30rpx;
+        padding: 0 8rpx;
+        background: #fa436a;
+        color: #fff;
+        font-size: 20rpx;
+        line-height: 30rpx;
+        text-align: center;
+        border-radius: 15rpx;
+        border: 2rpx solid #fff;
+        box-sizing: border-box;
+      }
     }
   }
 
