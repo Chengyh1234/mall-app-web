@@ -12,8 +12,12 @@ const baseURL = import.meta.env.VITE_API_BASE_URL
 
 const httpInterceptor = {
   invoke(options: UniApp.RequestOptions) {
-    // 1.拼接基础地址（ES 相对路径 /esProduct 走 vite 代理，不拼主 baseURL）
-    if (!options.url.startsWith('http') && !options.url.startsWith('/esProduct')) {
+    // baseURL 为本项目扩展字段（HttpRequestOptions，ES 搜索等独立前缀场景使用）
+    const ownBaseURL = (options as HttpRequestOptions).baseURL
+    // 1.拼接基础地址（跳过 http 开头、/esProduct（ES 走 vite 代理）、已带独立 baseURL 前缀的请求）
+    //   避免与 http() 中手动拼接的独立前缀（如 /api-search）叠加成 /api-portal/api-search/xxx
+    const hasOwnBaseURL = !!ownBaseURL && options.url.startsWith(ownBaseURL)
+    if (!options.url.startsWith('http') && !options.url.startsWith('/esProduct') && !hasOwnBaseURL) {
       options.url = baseURL + options.url
     }
     // 2.设置超时时间（OSS直传等场景可自行传入更长超时）
@@ -82,8 +86,6 @@ export interface HttpRequestOptions extends UniApp.RequestOptions {
  *    3.3 网络错误 -> 提示用户换网络
  */
 export const http = <T>(options: HttpRequestOptions): Promise<CommonResult<T>> => {
-  // 覆盖 baseURL（若指定）用于 ES 独立服务等场景
-  const requestBaseURL = options.baseURL ?? baseURL
   // 处理 params 参数，拼接到 URL?
   if (options.params) {
     const queryString = buildQueryString(options.params)
@@ -94,12 +96,18 @@ export const http = <T>(options: HttpRequestOptions): Promise<CommonResult<T>> =
     delete options.params
   }
 
+  // 请求拦截器会对所有 uni.request 统一拼接主 baseURL（跳过 http 开头与 /esProduct 的请求），
+  // 故这里默认直接使用 options.url，避免与拦截器双重拼接（/api-portal/api-portal/xxx）。
+  // 仅当显式指定独立 baseURL（如 ES 搜索 /api-search）时，才在此处手动拼接前缀。
+  const finalUrl =
+    options.baseURL && !options.url.startsWith('http')
+      ? options.baseURL + options.url
+      : options.url
+
   return new Promise<CommonResult<T>>((resolve, reject) => {
     uni.request({
       ...options,
-      // 拼接完整地址
-      url: options.url.startsWith('http') ? options.url : requestBaseURL + options.url,
-      baseURL: requestBaseURL,
+      url: finalUrl,
       // 响应成功
       success(res) {
         // 状态码 2xx，参考 axios 的设计

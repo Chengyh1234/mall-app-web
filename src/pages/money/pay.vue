@@ -111,13 +111,14 @@ const handleConfirmPay = async () => {
     } else {
       // 手机端：跳转手机网站支付，唤起支付宝 APP
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+      // 订单标题含中文，需先进行 URL 编码，避免跳转后支付宝页面标题乱码
+      const subject = encodeURIComponent(orderInfo.value.receiverName + '的商品订单')
       window.location.href =
         apiBaseUrl +
         '/alipay/webPay?outTradeNo=' +
         orderInfo.value.orderSn +
         '&subject=' +
-        orderInfo.value.receiverName +
-        '的商品订单' +
+        subject +
         '&totalAmount=' +
         orderInfo.value.totalAmount
     }
